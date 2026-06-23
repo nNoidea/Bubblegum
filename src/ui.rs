@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex};
 
 thread_local! {
     static INJECTED_COLORS: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
+    static GLOBAL_PROVIDER: gtk::CssProvider = gtk::CssProvider::new();
+    static GLOBAL_CSS: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
 }
 
 fn generate_color(seed: &str) -> (String, String) {
@@ -75,16 +77,24 @@ fn inject_color_css_if_needed(source_text: &str) -> String {
         let mut injected = injected.borrow_mut();
         if !injected.contains(&class_name) {
             let (bg, fg) = generate_color(source_text);
-            let provider = gtk::CssProvider::new();
-            provider.load_from_data(&format!(
-                ".{} {{ background-color: {}; color: {}; }}",
-                class_name, bg, fg
-            ));
-            gtk::style_context_add_provider_for_display(
-                &gtk::gdk::Display::default().unwrap(),
-                &provider,
-                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-            );
+            
+            GLOBAL_CSS.with(|css| {
+                let mut css_str = css.borrow_mut();
+                css_str.push_str(&format!(
+                    ".{} {{ background-color: {}; color: {}; }}\n",
+                    class_name, bg, fg
+                ));
+                
+                GLOBAL_PROVIDER.with(|provider| {
+                    provider.load_from_data(&css_str);
+                    gtk::style_context_add_provider_for_display(
+                        &gtk::gdk::Display::default().unwrap(),
+                        provider,
+                        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+                    );
+                });
+            });
+
             injected.insert(class_name.clone());
         }
     });
@@ -351,12 +361,29 @@ fn build_packages_page(
         .can_unselect(true)
         .build();
 
+    let search_timeout = Arc::new(Mutex::new(None::<glib::SourceId>));
     search_entry.connect_search_changed({
         let search_query = search_query.clone();
         let filter = filter.clone();
+        let search_timeout = search_timeout.clone();
         move |entry| {
-            *search_query.lock().unwrap() = entry.text().to_string();
-            filter.changed(gtk::FilterChange::Different);
+            let text = entry.text().to_string();
+            let mut timeout = search_timeout.lock().unwrap();
+            if let Some(source_id) = timeout.take() {
+                source_id.remove();
+            }
+            let search_query = search_query.clone();
+            let filter = filter.clone();
+            let search_timeout_inner = search_timeout.clone();
+            *timeout = Some(glib::timeout_add_local(
+                std::time::Duration::from_millis(150),
+                move || {
+                    *search_query.lock().unwrap() = text.clone();
+                    filter.changed(gtk::FilterChange::Different);
+                    *search_timeout_inner.lock().unwrap() = None;
+                    glib::ControlFlow::Break
+                },
+            ));
         }
     });
 
@@ -449,6 +476,8 @@ fn build_packages_page(
     let d_source_label = gtk::Label::builder()
         .css_classes(["source-label"].to_vec())
         .build();
+    let d_source_provider = gtk::CssProvider::new();
+    d_source_label.style_context().add_provider(&d_source_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
     let pm_btn = gtk::Button::builder()
         .child(&d_pm_label)
@@ -543,6 +572,8 @@ fn build_packages_page(
         d_pm_label,
         #[weak]
         d_source_label,
+        #[strong]
+        d_source_provider,
         #[weak]
         d_version,
         move |model| {
@@ -565,9 +596,7 @@ fn build_packages_page(
                 let source_text = pkg.source.as_deref().unwrap_or("Unknown");
                 d_source_label.set_text(source_text);
                 let (bg, fg) = crate::ui::generate_color(source_text);
-                let provider = gtk::CssProvider::new();
-                provider.load_from_data(&format!("label {{ background-color: {}; color: {}; }}", bg, fg));
-                d_source_label.style_context().add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+                d_source_provider.load_from_data(&format!("label {{ background-color: {}; color: {}; }}", bg, fg));
 
                 d_version.set_text(&pkg.version);
                 revealer.set_reveal_child(true);
@@ -638,8 +667,7 @@ fn build_packages_page(
                                             .output(),
                                     }
                                 })
-                                .await
-                                .unwrap();
+                                .await;
 
                                 loading_toast.dismiss();
 
@@ -648,7 +676,7 @@ fn build_packages_page(
                                 }
 
                                 match result {
-                                    Ok(output) if output.status.success() => {
+                                    Ok(Ok(output)) if output.status.success() => {
                                         let success_toast = adw::Toast::new(&format!(
                                             "{} deleted successfully!",
                                             pkg.name

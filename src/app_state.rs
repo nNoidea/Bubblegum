@@ -1,6 +1,7 @@
 use crate::backend::{Backend, CargoBackend, DnfBackend, FlatpakBackend};
 
 use gtk4::gio;
+use gtk4::gio::prelude::ListModelExt;
 use gtk4::glib;
 use tokio::task;
 
@@ -36,11 +37,8 @@ impl AppState {
             pkgs.append(&mut p);
         }
 
-        // Clear existing and append new items to the ListStore
-        self.packages.remove_all();
-        for pkg in pkgs {
-            self.packages.append(&glib::BoxedAnyObject::new(pkg));
-        }
+        let glib_pkgs: Vec<glib::BoxedAnyObject> = pkgs.into_iter().map(glib::BoxedAnyObject::new).collect();
+        self.packages.splice(0, self.packages.n_items(), &glib_pkgs);
 
         let (flatpak_r, cargo_r, dnf_r) = tokio::join!(
             task::spawn_blocking(|| FlatpakBackend.get_repositories()),
@@ -59,9 +57,7 @@ impl AppState {
             repos.append(&mut r);
         }
 
-        self.repositories.remove_all();
-        for repo in repos {
-            self.repositories.append(&glib::BoxedAnyObject::new(repo));
-        }
+        let glib_repos: Vec<glib::BoxedAnyObject> = repos.into_iter().map(glib::BoxedAnyObject::new).collect();
+        self.repositories.splice(0, self.repositories.n_items(), &glib_repos);
     }
 }
