@@ -144,6 +144,16 @@ pub fn build_window(app: &adw::Application, state: AppState) {
         .content(&toast_overlay)
         .build();
 
+    search_entry.connect_search_changed(glib::clone!(#[weak] view_stack, move |entry| {
+        if !entry.text().is_empty() {
+            if let Some(visible_child) = view_stack.visible_child_name() {
+                if visible_child != "packages" {
+                    view_stack.set_visible_child_name("packages");
+                }
+            }
+        }
+    }));
+
     search_entry.set_key_capture_widget(Some(&window.clone().upcast::<gtk::Widget>()));
 
     let key_capture = gtk::EventControllerKey::new();
