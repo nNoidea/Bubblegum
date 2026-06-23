@@ -1,5 +1,5 @@
 mod app_state;
-mod backend;
+mod backends;
 mod models;
 mod ui;
 

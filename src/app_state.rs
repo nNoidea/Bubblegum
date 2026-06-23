@@ -1,4 +1,4 @@
-use crate::backend::{Backend, CargoBackend, DnfBackend, FlatpakBackend};
+use crate::backends::get_all_backends;
 
 use gtk4::gio;
 use gtk4::gio::prelude::ListModelExt;
@@ -20,44 +20,31 @@ impl AppState {
     }
 
     pub async fn fetch_all(&self) {
-        let (flatpak_p, cargo_p, dnf_p) = tokio::join!(
-            task::spawn_blocking(|| FlatpakBackend.get_packages()),
-            task::spawn_blocking(|| CargoBackend.get_packages()),
-            task::spawn_blocking(|| DnfBackend.get_packages()),
-        );
+        let backends = get_all_backends();
+        let mut tasks = Vec::new();
 
-        let mut pkgs = Vec::new();
-        if let Ok(Ok(mut p)) = flatpak_p {
-            pkgs.append(&mut p);
-        }
-        if let Ok(Ok(mut p)) = cargo_p {
-            pkgs.append(&mut p);
-        }
-        if let Ok(Ok(mut p)) = dnf_p {
-            pkgs.append(&mut p);
+        for backend in backends {
+            tasks.push(task::spawn_blocking(move || {
+                let pkgs = backend.get_packages().unwrap_or_default();
+                let repos = backend.get_repositories().unwrap_or_default();
+                (pkgs, repos)
+            }));
         }
 
-        let glib_pkgs: Vec<glib::BoxedAnyObject> = pkgs.into_iter().map(glib::BoxedAnyObject::new).collect();
+        let mut all_pkgs = Vec::new();
+        let mut all_repos = Vec::new();
+
+        for task in tasks {
+            if let Ok((mut p, mut r)) = task.await {
+                all_pkgs.append(&mut p);
+                all_repos.append(&mut r);
+            }
+        }
+
+        let glib_pkgs: Vec<glib::BoxedAnyObject> = all_pkgs.into_iter().map(glib::BoxedAnyObject::new).collect();
         self.packages.splice(0, self.packages.n_items(), &glib_pkgs);
 
-        let (flatpak_r, cargo_r, dnf_r) = tokio::join!(
-            task::spawn_blocking(|| FlatpakBackend.get_repositories()),
-            task::spawn_blocking(|| CargoBackend.get_repositories()),
-            task::spawn_blocking(|| DnfBackend.get_repositories()),
-        );
-
-        let mut repos = Vec::new();
-        if let Ok(Ok(mut r)) = flatpak_r {
-            repos.append(&mut r);
-        }
-        if let Ok(Ok(mut r)) = cargo_r {
-            repos.append(&mut r);
-        }
-        if let Ok(Ok(mut r)) = dnf_r {
-            repos.append(&mut r);
-        }
-
-        let glib_repos: Vec<glib::BoxedAnyObject> = repos.into_iter().map(glib::BoxedAnyObject::new).collect();
+        let glib_repos: Vec<glib::BoxedAnyObject> = all_repos.into_iter().map(glib::BoxedAnyObject::new).collect();
         self.repositories.splice(0, self.repositories.n_items(), &glib_repos);
     }
 }

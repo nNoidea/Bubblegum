@@ -1,167 +1,10 @@
+use super::Backend;
 use crate::models::{Package, PackageManager, Repository};
 use anyhow::Result;
 use std::fs;
 use std::process::Command;
 
-pub trait Backend {
-    fn get_packages(&self) -> Result<Vec<Package>>;
-    fn get_repositories(&self) -> Result<Vec<Repository>>;
-}
-
-pub struct FlatpakBackend;
-pub struct CargoBackend;
 pub struct DnfBackend;
-
-impl Backend for FlatpakBackend {
-    fn get_packages(&self) -> Result<Vec<Package>> {
-        let output = Command::new("flatpak")
-            .args(["list", "--app", "--columns=application,name,version,origin,description,size"])
-            .output()?;
-
-        let mut packages = Vec::new();
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let parts: Vec<&str> = line.split('\t').collect();
-                if parts.len() >= 4 {
-                    let description = parts.get(4).filter(|s| !s.is_empty()).map(|s| s.trim().to_string());
-                    let size = parts.get(5).filter(|s| !s.is_empty()).map(|s| s.trim().to_string());
-                    
-                    packages.push(Package {
-                        id: parts[0].trim().to_string(),
-                        name: parts[1].trim().to_string(),
-                        manager: PackageManager::Flatpak,
-                        version: parts[2].trim().to_string(),
-                        source: Some(parts[3].trim().to_string()),
-                        icon: Some(parts[0].trim().to_string()),
-                        description,
-                        size,
-                        install_date: None,
-                    });
-                }
-            }
-        }
-        Ok(packages)
-    }
-
-    fn get_repositories(&self) -> Result<Vec<Repository>> {
-        let output = Command::new("flatpak")
-            .args(["remotes", "--columns=name,url"])
-            .output()?;
-
-        let mut repos = Vec::new();
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let parts: Vec<&str> = line.split('\t').collect();
-                if parts.len() >= 2 {
-                    repos.push(Repository {
-                        id: parts[0].trim().to_string(),
-                        name: parts[0].trim().to_string(),
-                        manager: PackageManager::Flatpak,
-                        enabled: true,
-                        url: Some(parts[1].trim().to_string()),
-                        file_path: None,
-                        added_date: None,
-                    });
-                }
-            }
-        }
-        Ok(repos)
-    }
-}
-
-impl Backend for CargoBackend {
-    fn get_packages(&self) -> Result<Vec<Package>> {
-        let output = Command::new("cargo")
-            .args(["install", "--list"])
-            .output()?;
-
-        let mut packages = Vec::new();
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if !line.starts_with(' ') && line.ends_with(':') {
-                    let line = line.trim_end_matches(':');
-                    if let Some((name, rest)) = line.split_once(' ') {
-                        let rest = rest.trim();
-                        let (version, source) = if let Some(idx) = rest.find('(') {
-                            let v = rest[..idx].trim().to_string();
-                            let s = rest[idx + 1..].trim_end_matches(')').to_string();
-                            (v, s)
-                        } else {
-                            (rest.to_string(), "crates.io".to_string())
-                        };
-
-                        packages.push(Package {
-                            id: name.to_string(),
-                            name: name.to_string(),
-                            manager: PackageManager::Cargo,
-                            version,
-                            source: Some(source),
-                            icon: None,
-                            description: None,
-                            size: None,
-                            install_date: None,
-                        });
-                    }
-                }
-            }
-        }
-        Ok(packages)
-    }
-
-    fn get_repositories(&self) -> Result<Vec<Repository>> {
-        let mut repos = std::collections::HashSet::new();
-        // Always include crates.io by default
-        repos.insert("crates.io".to_string());
-
-        let output = Command::new("cargo")
-            .args(["install", "--list"])
-            .output()?;
-
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if !line.starts_with(' ') && line.ends_with(':') {
-                    let line = line.trim_end_matches(':');
-                    if let Some((_, rest)) = line.split_once(' ') {
-                        let rest = rest.trim();
-                        if let Some(idx) = rest.find('(') {
-                            let s = rest[idx + 1..].trim_end_matches(')').to_string();
-                            repos.insert(s);
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut repositories = Vec::new();
-        for repo_url in repos {
-            let name = repo_url.clone();
-
-            let url = if repo_url == "crates.io" {
-                Some("https://crates.io".to_string())
-            } else {
-                Some(repo_url.clone())
-            };
-
-            repositories.push(Repository {
-                id: repo_url.clone(),
-                name,
-                manager: PackageManager::Cargo,
-                enabled: true,
-                url,
-                file_path: None,
-                added_date: None,
-            });
-        }
-
-        repositories.sort_by(|a, b| a.name.cmp(&b.name));
-
-        Ok(repositories)
-    }
-}
 
 fn build_desktop_icon_map() -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
@@ -192,7 +35,6 @@ fn build_desktop_icon_map() -> std::collections::HashMap<String, String> {
 
 impl Backend for DnfBackend {
     fn get_packages(&self) -> Result<Vec<Package>> {
-        // We use repoquery to get a stable, tab-separated format for installed packages
         let output = Command::new("dnf")
             .args([
                 "repoquery",
