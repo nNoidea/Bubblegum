@@ -11,6 +11,10 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
+thread_local! {
+    static INJECTED_COLORS: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
 fn generate_color(seed: &str) -> (String, String) {
     if seed.to_lowercase() == "fedora" {
         return (
@@ -60,6 +64,32 @@ fn generate_color(seed: &str) -> (String, String) {
         format!("#{:02x}{:02x}{:02x}", r, g, b),
         fg_color.to_string(),
     )
+}
+
+fn inject_color_css_if_needed(source_text: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    source_text.hash(&mut hasher);
+    let class_name = format!("src-color-{:x}", hasher.finish());
+
+    INJECTED_COLORS.with(|injected| {
+        let mut injected = injected.borrow_mut();
+        if !injected.contains(&class_name) {
+            let (bg, fg) = generate_color(source_text);
+            let provider = gtk::CssProvider::new();
+            provider.load_from_data(&format!(
+                ".{} {{ background-color: {}; color: {}; }}",
+                class_name, bg, fg
+            ));
+            gtk::style_context_add_provider_for_display(
+                &gtk::gdk::Display::default().unwrap(),
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+            injected.insert(class_name.clone());
+        }
+    });
+
+    class_name
 }
 
 pub fn build_window(app: &adw::Application, state: AppState) {
@@ -273,15 +303,8 @@ fn build_packages_page(
         let source_text = pkg.source.as_deref().unwrap_or("Unknown");
         source_label.set_text(source_text);
 
-        let (bg, fg) = generate_color(source_text);
-        let provider = gtk::CssProvider::new();
-        provider.load_from_data(&format!(
-            "label {{ background-color: {}; color: {}; }}",
-            bg, fg
-        ));
-        source_label
-            .style_context()
-            .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        let class_name = inject_color_css_if_needed(source_text);
+        source_label.set_css_classes(&["source-label", &class_name]);
 
         version_label.set_text(&pkg.version);
     });
@@ -656,18 +679,10 @@ fn build_repositories_page(state: AppState, toast_overlay: &adw::ToastOverlay) -
             .halign(gtk::Align::Start)
             .wrap(true)
             .wrap_mode(gtk::pango::WrapMode::WordChar)
-            .css_classes(["source-label", "repo-page-label"].to_vec())
             .build();
 
-        let (bg, fg) = generate_color(&repo.name);
-        let provider = gtk::CssProvider::new();
-        provider.load_from_data(&format!(
-            "label {{ background-color: {}; color: {}; }}",
-            bg, fg
-        ));
-        title_label
-            .style_context()
-            .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        let class_name = inject_color_css_if_needed(&repo.name);
+        title_label.set_css_classes(&["source-label", "repo-page-label", &class_name]);
 
         let title_hbox = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         title_hbox.set_margin_top(12);
