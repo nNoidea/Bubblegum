@@ -618,6 +618,27 @@ fn build_packages_page(
     detail_labels_box.append(&d_badges_box);
     detail_labels_box.append(&version_btn);
 
+    let d_description = gtk::Label::builder()
+        .halign(gtk::Align::Start)
+        .wrap(true)
+        .selectable(true)
+        .margin_start(6)
+        .build();
+
+    let d_size_date_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    d_size_date_box.set_margin_start(6);
+    let d_size = gtk::Label::builder()
+        .halign(gtk::Align::Start)
+        .build();
+    let d_date = gtk::Label::builder()
+        .halign(gtk::Align::Start)
+        .build();
+    d_size_date_box.append(&d_size);
+    d_size_date_box.append(&d_date);
+
+    detail_labels_box.append(&d_description);
+    detail_labels_box.append(&d_size_date_box);
+
     let uninstall_btn = gtk::Button::builder()
         .label("Uninstall")
         .css_classes(["destructive-action"].to_vec())
@@ -648,6 +669,14 @@ fn build_packages_page(
         d_version,
         #[weak]
         d_icon_img,
+        #[weak]
+        d_description,
+        #[weak]
+        d_size,
+        #[weak]
+        d_date,
+        #[weak]
+        d_size_date_box,
         move |model| {
             if let Some(item) = model.selected_item() {
                 let boxed = item.downcast_ref::<glib::BoxedAnyObject>().unwrap();
@@ -675,6 +704,32 @@ fn build_packages_page(
                 d_source_provider.load_from_data(&format!("label {{ background-color: {}; color: {}; }}", bg, fg));
 
                 d_version.set_text(&pkg.version);
+                
+                if let Some(desc) = &pkg.description {
+                    d_description.set_text(desc);
+                    d_description.set_visible(true);
+                } else {
+                    d_description.set_visible(false);
+                }
+                
+                let mut show_size_date = false;
+                if let Some(sz) = &pkg.size {
+                    d_size.set_text(&format!("Size: {}", sz));
+                    d_size.set_visible(true);
+                    show_size_date = true;
+                } else {
+                    d_size.set_visible(false);
+                }
+                
+                if let Some(dt) = &pkg.install_date {
+                    d_date.set_text(&format!("Installed: {}", dt));
+                    d_date.set_visible(true);
+                    show_size_date = true;
+                } else {
+                    d_date.set_visible(false);
+                }
+                d_size_date_box.set_visible(show_size_date);
+
                 revealer.set_reveal_child(true);
             } else {
                 revealer.set_reveal_child(false);

@@ -15,7 +15,7 @@ pub struct DnfBackend;
 impl Backend for FlatpakBackend {
     fn get_packages(&self) -> Result<Vec<Package>> {
         let output = Command::new("flatpak")
-            .args(["list", "--app", "--columns=application,name,version,origin"])
+            .args(["list", "--app", "--columns=application,name,version,origin,description,size"])
             .output()?;
 
         let mut packages = Vec::new();
@@ -24,6 +24,9 @@ impl Backend for FlatpakBackend {
             for line in stdout.lines() {
                 let parts: Vec<&str> = line.split('\t').collect();
                 if parts.len() >= 4 {
+                    let description = parts.get(4).filter(|s| !s.is_empty()).map(|s| s.trim().to_string());
+                    let size = parts.get(5).filter(|s| !s.is_empty()).map(|s| s.trim().to_string());
+                    
                     packages.push(Package {
                         id: parts[0].trim().to_string(),
                         name: parts[1].trim().to_string(),
@@ -31,6 +34,9 @@ impl Backend for FlatpakBackend {
                         version: parts[2].trim().to_string(),
                         source: Some(parts[3].trim().to_string()),
                         icon: Some(parts[0].trim().to_string()),
+                        description,
+                        size,
+                        install_date: None,
                     });
                 }
             }
@@ -94,6 +100,9 @@ impl Backend for CargoBackend {
                             version,
                             source: Some(source),
                             icon: None,
+                            description: None,
+                            size: None,
+                            install_date: None,
                         });
                     }
                 }
@@ -189,7 +198,7 @@ impl Backend for DnfBackend {
                 "repoquery",
                 "--installed",
                 "--qf",
-                "%{name}\t%{version}\t%{from_repo}\n",
+                "%{name}\t%{version}\t%{from_repo}\t%{summary}\t%{installsize}\t%{installtime}\n",
             ])
             .output()?;
 
@@ -200,7 +209,7 @@ impl Backend for DnfBackend {
             for line in stdout.lines() {
                 let parts: Vec<&str> = line.split('\t').collect();
                 if parts.len() >= 3 {
-                    let source_raw = parts[2].trim_start_matches('@').trim();
+                    let source_raw = parts.get(2).unwrap_or(&"").trim_start_matches('@').trim();
                     let source_str = source_raw.to_string();
                     
                     let pkg_name = parts[0].to_string();
@@ -218,14 +227,31 @@ impl Backend for DnfBackend {
                             }
                         }
                     }
+                    
+                    let summary = parts.get(3).filter(|s| !s.is_empty()).map(|s| s.trim().to_string());
+                    
+                    let size_bytes = parts.get(4).and_then(|s| s.parse::<u64>().ok());
+                    let size_str = size_bytes.map(|b| {
+                        let mb = b as f64 / 1_048_576.0;
+                        format!("{:.1} MB", mb)
+                    });
+                    
+                    let install_time = parts.get(5).and_then(|s| s.parse::<i64>().ok());
+                    let date_str = install_time.and_then(|t| {
+                        chrono::DateTime::from_timestamp(t, 0)
+                            .map(|dt| dt.format("%b %e, %Y").to_string())
+                    });
 
                     packages.push(Package {
                         id: pkg_name.clone(),
                         name: pkg_name,
                         manager: PackageManager::Dnf,
-                        version: parts[1].to_string(),
+                        version: parts.get(1).unwrap_or(&"").to_string(),
                         source: Some(source_str),
                         icon: Some(icon_name),
+                        description: summary,
+                        size: size_str,
+                        install_date: date_str,
                     });
                 }
             }

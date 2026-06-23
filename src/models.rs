@@ -25,6 +25,9 @@ pub struct Package {
     pub version: String,
     pub source: Option<String>,
     pub icon: Option<String>,
+    pub description: Option<String>,
+    pub size: Option<String>,
+    pub install_date: Option<String>,
 }
 
 #[derive(Debug, Clone)]
