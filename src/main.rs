@@ -53,6 +53,13 @@ fn main() -> glib::ExitCode {
                 font-size: 0.9em;
                 padding: 4px 10px;
             }
+            .compact-btn {
+                min-height: 28px;
+                padding-top: 4px;
+                padding-bottom: 4px;
+                padding-left: 6px;
+                padding-right: 6px;
+            }
         ",
         );
         gtk::style_context_add_provider_for_display(

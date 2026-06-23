@@ -121,12 +121,13 @@ pub fn build_window(app: &adw::Application, state: AppState) {
     header_bar.pack_end(&search_entry);
 
     let toast_overlay = adw::ToastOverlay::new();
+    let active_toast: Arc<Mutex<Option<adw::Toast>>> = Arc::new(Mutex::new(None));
 
-    let packages_page = build_packages_page(state.clone(), &search_entry, &toast_overlay);
+    let packages_page = build_packages_page(state.clone(), &search_entry, &toast_overlay, active_toast.clone());
     let page = view_stack.add_titled(&packages_page, Some("packages"), "Packages");
     page.set_icon_name(Some("view-app-grid-symbolic"));
 
-    let repositories_page = build_repositories_page(state.clone(), &toast_overlay);
+    let repositories_page = build_repositories_page(state.clone(), &toast_overlay, active_toast.clone());
     let page = view_stack.add_titled(&repositories_page, Some("repositories"), "Repositories");
     page.set_icon_name(Some("folder-symbolic"));
 
@@ -188,8 +189,8 @@ fn build_packages_page(
     state: AppState,
     search_entry: &gtk::SearchEntry,
     toast_overlay: &adw::ToastOverlay,
+    active_toast: Arc<Mutex<Option<adw::Toast>>>,
 ) -> gtk::Widget {
-    let active_toast: Arc<Mutex<Option<adw::Toast>>> = Arc::new(Mutex::new(None));
     let factory = gtk::SignalListItemFactory::new();
 
     factory.connect_setup(move |_, list_item| {
@@ -369,9 +370,11 @@ fn build_packages_page(
         };
         use gtk::gdk::Key;
         if keyval == Key::Down || keyval == Key::Right {
-            // First let the grid grab focus so its internal tracker wakes up
-            grid_view.grab_focus();
-            // Then programmatically set the selection to 0, which forces the active tracker to jump to 0 instantly
+            if let Some(first_child) = grid_view.first_child() {
+                first_child.grab_focus();
+            } else {
+                grid_view.grab_focus();
+            }
             sel_model_for_key.set_selected(0);
             return glib::Propagation::Stop;
         }
@@ -423,48 +426,42 @@ fn build_packages_page(
     detail_box.set_margin_top(12);
     detail_box.set_margin_bottom(36);
 
-    let detail_labels_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    let detail_labels_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let d_name = gtk::Label::builder()
-        .selectable(true)
         .halign(gtk::Align::Start)
         .css_classes(["title-4"].to_vec())
         .build();
     let d_badges_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     d_badges_box.set_halign(gtk::Align::Start);
     let d_pm_label = gtk::Label::builder()
-        .selectable(true)
         .css_classes(["pm-label"].to_vec())
         .build();
     let d_source_label = gtk::Label::builder()
-        .selectable(true)
         .css_classes(["source-label"].to_vec())
         .build();
-    d_badges_box.append(&d_pm_label);
-    d_badges_box.append(&d_source_label);
-    let d_version = gtk::Label::builder()
-        .selectable(true)
+
+    let pm_btn = gtk::Button::builder()
+        .child(&d_pm_label)
+        .css_classes(["flat", "compact-btn"].to_vec())
         .halign(gtk::Align::Start)
         .build();
-    let name_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let btn_copy_name = gtk::Button::builder().icon_name("edit-copy-symbolic").css_classes(["flat", "circular"].to_vec()).valign(gtk::Align::Center).build();
-    name_box.append(&d_name);
-    name_box.append(&btn_copy_name);
-    btn_copy_name.connect_clicked(glib::clone!(#[weak] d_name, #[weak] toast_overlay, #[strong] active_toast, move |b| {
+    pm_btn.connect_clicked(glib::clone!(#[weak] d_pm_label, #[weak] toast_overlay, #[strong] active_toast, move |b| {
         let clipboard = b.clipboard();
-        clipboard.set_text(&d_name.text());
+        clipboard.set_text(&d_pm_label.text());
         if let Some(prev) = active_toast.lock().unwrap().take() {
             prev.dismiss();
         }
-        let t = adw::Toast::new("Package name copied!");
+        let t = adw::Toast::new("Package manager copied!");
         *active_toast.lock().unwrap() = Some(t.clone());
         toast_overlay.add_toast(t);
     }));
 
-    let badges_row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let btn_copy_source = gtk::Button::builder().icon_name("edit-copy-symbolic").css_classes(["flat", "circular"].to_vec()).valign(gtk::Align::Center).build();
-    badges_row_box.append(&d_badges_box);
-    badges_row_box.append(&btn_copy_source);
-    btn_copy_source.connect_clicked(glib::clone!(#[weak] d_source_label, #[weak] toast_overlay, #[strong] active_toast, move |b| {
+    let source_btn = gtk::Button::builder()
+        .child(&d_source_label)
+        .css_classes(["flat", "compact-btn"].to_vec())
+        .halign(gtk::Align::Start)
+        .build();
+    source_btn.connect_clicked(glib::clone!(#[weak] d_source_label, #[weak] toast_overlay, #[strong] active_toast, move |b| {
         let clipboard = b.clipboard();
         clipboard.set_text(&d_source_label.text());
         if let Some(prev) = active_toast.lock().unwrap().take() {
@@ -475,11 +472,34 @@ fn build_packages_page(
         toast_overlay.add_toast(t);
     }));
 
-    let version_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let btn_copy_version = gtk::Button::builder().icon_name("edit-copy-symbolic").css_classes(["flat", "circular"].to_vec()).valign(gtk::Align::Center).build();
-    version_box.append(&d_version);
-    version_box.append(&btn_copy_version);
-    btn_copy_version.connect_clicked(glib::clone!(#[weak] d_version, #[weak] toast_overlay, #[strong] active_toast, move |b| {
+    d_badges_box.append(&pm_btn);
+    d_badges_box.append(&source_btn);
+    let d_version = gtk::Label::builder()
+        .halign(gtk::Align::Start)
+        .build();
+
+    let d_name_btn = gtk::Button::builder()
+        .child(&d_name)
+        .css_classes(["flat", "compact-btn"].to_vec())
+        .halign(gtk::Align::Start)
+        .build();
+    d_name_btn.connect_clicked(glib::clone!(#[weak] d_name, #[weak] toast_overlay, #[strong] active_toast, move |b| {
+        let clipboard = b.clipboard();
+        clipboard.set_text(&d_name.text());
+        if let Some(prev) = active_toast.lock().unwrap().take() {
+            prev.dismiss();
+        }
+        let t = adw::Toast::new("Package name copied!");
+        *active_toast.lock().unwrap() = Some(t.clone());
+        toast_overlay.add_toast(t);
+    }));
+
+    let version_btn = gtk::Button::builder()
+        .child(&d_version)
+        .css_classes(["flat", "compact-btn"].to_vec())
+        .halign(gtk::Align::Start)
+        .build();
+    version_btn.connect_clicked(glib::clone!(#[weak] d_version, #[weak] toast_overlay, #[strong] active_toast, move |b| {
         let clipboard = b.clipboard();
         clipboard.set_text(&d_version.text());
         if let Some(prev) = active_toast.lock().unwrap().take() {
@@ -490,9 +510,9 @@ fn build_packages_page(
         toast_overlay.add_toast(t);
     }));
 
-    detail_labels_box.append(&name_box);
-    detail_labels_box.append(&badges_row_box);
-    detail_labels_box.append(&version_box);
+    detail_labels_box.append(&d_name_btn);
+    detail_labels_box.append(&d_badges_box);
+    detail_labels_box.append(&version_btn);
 
     let uninstall_btn = gtk::Button::builder()
         .label("Uninstall")
@@ -653,9 +673,11 @@ fn build_packages_page(
     overlay.upcast()
 }
 
-fn build_repositories_page(state: AppState, toast_overlay: &adw::ToastOverlay) -> gtk::Widget {
-    let active_toast: Arc<Mutex<Option<adw::Toast>>> = Arc::new(Mutex::new(None));
-
+fn build_repositories_page(
+    state: AppState,
+    toast_overlay: &adw::ToastOverlay,
+    active_toast: Arc<Mutex<Option<adw::Toast>>>,
+) -> gtk::Widget {
     let list_box = gtk::ListBox::builder()
         .selection_mode(gtk::SelectionMode::None)
         .css_classes(vec!["boxed-list".to_string()])
@@ -684,18 +706,17 @@ fn build_repositories_page(state: AppState, toast_overlay: &adw::ToastOverlay) -
         let class_name = inject_color_css_if_needed(&repo.name);
         title_label.set_css_classes(&["source-label", "repo-page-label", &class_name]);
 
-        let title_hbox = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        title_hbox.set_margin_top(12);
-        title_hbox.append(&title_label);
-
-        let title_copy_btn = gtk::Button::from_icon_name("edit-copy-symbolic");
-        title_copy_btn.set_valign(gtk::Align::Center);
-        title_copy_btn.add_css_class("flat");
-        title_copy_btn.add_css_class("circular");
+        let title_btn = gtk::Button::builder()
+            .child(&title_label)
+            .css_classes(["flat"].to_vec())
+            .halign(gtk::Align::Start)
+            .margin_top(12)
+            .build();
+        
         let title_clone = repo.name.clone();
         let overlay_btn_clone_title = overlay_clone.clone();
         let active_toast_btn_clone_title = active_toast.clone();
-        title_copy_btn.connect_clicked(move |btn| {
+        title_btn.connect_clicked(move |btn| {
             btn.clipboard().set_text(&title_clone);
             if let Some(old_toast) = active_toast_btn_clone_title.lock().unwrap().take() {
                 old_toast.dismiss();
@@ -704,14 +725,12 @@ fn build_repositories_page(state: AppState, toast_overlay: &adw::ToastOverlay) -
             *active_toast_btn_clone_title.lock().unwrap() = Some(t.clone());
             overlay_btn_clone_title.add_toast(t);
         });
-        title_hbox.append(&title_copy_btn);
 
-        text_vbox.append(&title_hbox);
+        text_vbox.append(&title_btn);
 
         let pm_label = gtk::Label::builder()
             .css_classes(["pm-label", "repo-page-label"].to_vec())
             .halign(gtk::Align::Start)
-            .margin_bottom(12)
             .build();
         let (pm_text, pm_class) = match repo.manager {
             crate::models::PackageManager::Dnf => ("DNF", "pm-dnf"),
@@ -720,7 +739,28 @@ fn build_repositories_page(state: AppState, toast_overlay: &adw::ToastOverlay) -
         };
         pm_label.set_text(pm_text);
         pm_label.add_css_class(pm_class);
-        text_vbox.append(&pm_label);
+
+        let pm_btn = gtk::Button::builder()
+            .child(&pm_label)
+            .css_classes(["flat"].to_vec())
+            .halign(gtk::Align::Start)
+            .margin_bottom(12)
+            .build();
+
+        let pm_clone = pm_text.to_string();
+        let overlay_btn_clone_pm = overlay_clone.clone();
+        let active_toast_btn_clone_pm = active_toast.clone();
+        pm_btn.connect_clicked(move |btn| {
+            btn.clipboard().set_text(&pm_clone);
+            if let Some(old_toast) = active_toast_btn_clone_pm.lock().unwrap().take() {
+                old_toast.dismiss();
+            }
+            let t = adw::Toast::new("Copied to clipboard!");
+            *active_toast_btn_clone_pm.lock().unwrap() = Some(t.clone());
+            overlay_btn_clone_pm.add_toast(t);
+        });
+
+        text_vbox.append(&pm_btn);
 
         prefix_box.append(&text_vbox);
         expander.add_prefix(&prefix_box);
@@ -737,17 +777,14 @@ fn build_repositories_page(state: AppState, toast_overlay: &adw::ToastOverlay) -
             let url_row = adw::ActionRow::builder()
                 .title("URL")
                 .subtitle(safe_url)
+                .activatable(true)
                 .build();
 
-            let copy_btn = gtk::Button::from_icon_name("edit-copy-symbolic");
-            copy_btn.set_valign(gtk::Align::Center);
-            copy_btn.add_css_class("flat");
-            copy_btn.add_css_class("circular");
             let url_clone = url.clone();
             let overlay_btn_clone = overlay_clone.clone();
             let active_toast_btn_clone = active_toast.clone();
-            copy_btn.connect_clicked(move |btn| {
-                btn.clipboard().set_text(&url_clone);
+            url_row.connect_activated(move |row| {
+                row.clipboard().set_text(&url_clone);
                 if let Some(old_toast) = active_toast_btn_clone.lock().unwrap().take() {
                     old_toast.dismiss();
                 }
@@ -755,7 +792,7 @@ fn build_repositories_page(state: AppState, toast_overlay: &adw::ToastOverlay) -
                 *active_toast_btn_clone.lock().unwrap() = Some(t.clone());
                 overlay_btn_clone.add_toast(t);
             });
-            url_row.add_suffix(&copy_btn);
+            
             expander.add_row(&url_row);
         }
 
@@ -764,17 +801,14 @@ fn build_repositories_page(state: AppState, toast_overlay: &adw::ToastOverlay) -
             let path_row = adw::ActionRow::builder()
                 .title("File Path")
                 .subtitle(safe_path)
+                .activatable(true)
                 .build();
 
-            let copy_btn = gtk::Button::from_icon_name("edit-copy-symbolic");
-            copy_btn.set_valign(gtk::Align::Center);
-            copy_btn.add_css_class("flat");
-            copy_btn.add_css_class("circular");
             let path_clone = path.clone();
             let overlay_btn_clone = overlay_clone.clone();
             let active_toast_btn_clone = active_toast.clone();
-            copy_btn.connect_clicked(move |btn| {
-                btn.clipboard().set_text(&path_clone);
+            path_row.connect_activated(move |row| {
+                row.clipboard().set_text(&path_clone);
                 if let Some(old_toast) = active_toast_btn_clone.lock().unwrap().take() {
                     old_toast.dismiss();
                 }
@@ -782,7 +816,7 @@ fn build_repositories_page(state: AppState, toast_overlay: &adw::ToastOverlay) -
                 *active_toast_btn_clone.lock().unwrap() = Some(t.clone());
                 overlay_btn_clone.add_toast(t);
             });
-            path_row.add_suffix(&copy_btn);
+            
             expander.add_row(&path_row);
         }
 
