@@ -102,7 +102,49 @@ fn inject_color_css_if_needed(source_text: &str) -> String {
     class_name
 }
 
+fn resolve_icon_name(pkg_icon: Option<&str>) -> String {
+    if let Some(display) = gtk::gdk::Display::default() {
+        let theme = gtk::IconTheme::for_display(&display);
+        
+        if let Some(icon) = pkg_icon {
+            if theme.has_icon(icon) {
+                return icon.to_string();
+            }
+            let sym = format!("{}-symbolic", icon);
+            if theme.has_icon(&sym) {
+                return sym;
+            }
+        }
+        
+        for fallback in &[
+            "package-x-generic",
+            "package-x-generic-symbolic",
+            "system-software-install",
+            "system-software-install-symbolic",
+            "application-x-executable",
+            "application-x-executable-symbolic"
+        ] {
+            if theme.has_icon(fallback) {
+                return fallback.to_string();
+            }
+        }
+    }
+    String::from("application-x-executable")
+}
+
 pub fn build_window(app: &adw::Application, state: AppState) {
+    if let Some(display) = gtk::gdk::Display::default() {
+        let theme = gtk::IconTheme::for_display(&display);
+        theme.add_search_path("/var/lib/flatpak/exports/share/icons");
+        if let Some(home) = std::env::var_os("HOME") {
+            let mut p = std::path::PathBuf::from(home);
+            p.push(".local/share/flatpak/exports/share/icons");
+            if let Some(s) = p.to_str() {
+                theme.add_search_path(s);
+            }
+        }
+    }
+
     let header_bar = adw::HeaderBar::new();
 
     let refresh_btn = gtk::Button::from_icon_name("view-refresh-symbolic");
@@ -230,12 +272,21 @@ fn build_packages_page(
         box_.set_margin_top(8);
         box_.set_margin_bottom(8);
 
+        let icon_img = gtk::Image::builder()
+            .pixel_size(24)
+            .build();
+
         let name_label = gtk::Label::builder()
             .halign(gtk::Align::Start)
             .ellipsize(gtk::pango::EllipsizeMode::End)
             .lines(1)
             .css_classes(["title-4"].to_vec())
             .build();
+
+        let header_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        header_box.set_halign(gtk::Align::Start);
+        header_box.append(&icon_img);
+        header_box.append(&name_label);
 
         let badges_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         badges_box.set_halign(gtk::Align::Start);
@@ -261,7 +312,7 @@ fn build_packages_page(
             .css_classes(["dim-label"].to_vec())
             .build();
 
-        box_.append(&name_label);
+        box_.append(&header_box);
         box_.append(&badges_box);
         box_.append(&version_label);
 
@@ -276,15 +327,26 @@ fn build_packages_page(
         let card = list_item.child().unwrap().downcast::<gtk::Box>().unwrap();
         let box_ = card.first_child().unwrap().downcast::<gtk::Box>().unwrap();
 
-        let name_label = box_
+        let header_box = box_
             .first_child()
             .unwrap()
-            .downcast::<gtk::Label>()
+            .downcast::<gtk::Box>()
             .unwrap();
-        let badges_box = name_label
+        let badges_box = header_box
             .next_sibling()
             .unwrap()
             .downcast::<gtk::Box>()
+            .unwrap();
+            
+        let icon_img = header_box
+            .first_child()
+            .unwrap()
+            .downcast::<gtk::Image>()
+            .unwrap();
+        let name_label = icon_img
+            .next_sibling()
+            .unwrap()
+            .downcast::<gtk::Label>()
             .unwrap();
         let version_label = badges_box
             .next_sibling()
@@ -308,6 +370,9 @@ fn build_packages_page(
         let pkg = boxed.borrow::<Package>();
 
         name_label.set_text(&pkg.name);
+        
+        let icon_name = resolve_icon_name(pkg.icon.as_deref());
+        icon_img.set_icon_name(Some(&icon_name));
 
         let (pm_text, pm_class) = match pkg.manager {
             crate::models::PackageManager::Dnf => ("DNF", "pm-dnf"),
@@ -559,6 +624,11 @@ fn build_packages_page(
         .valign(gtk::Align::Center)
         .build();
 
+    let d_icon_img = gtk::Image::builder()
+        .pixel_size(48)
+        .build();
+
+    detail_box.append(&d_icon_img);
     detail_box.append(&detail_labels_box);
     detail_box.append(&uninstall_btn);
     revealer.set_child(Some(&detail_box));
@@ -576,10 +646,16 @@ fn build_packages_page(
         d_source_provider,
         #[weak]
         d_version,
+        #[weak]
+        d_icon_img,
         move |model| {
             if let Some(item) = model.selected_item() {
                 let boxed = item.downcast_ref::<glib::BoxedAnyObject>().unwrap();
                 let pkg = boxed.borrow::<Package>();
+                
+                let icon_name = resolve_icon_name(pkg.icon.as_deref());
+                d_icon_img.set_icon_name(Some(&icon_name));
+
                 d_name.set_text(&pkg.name);
                 
                 let (pm_text, pm_class) = match pkg.manager {

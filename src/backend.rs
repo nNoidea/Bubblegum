@@ -30,6 +30,7 @@ impl Backend for FlatpakBackend {
                         manager: PackageManager::Flatpak,
                         version: parts[2].trim().to_string(),
                         source: Some(parts[3].trim().to_string()),
+                        icon: Some(parts[0].trim().to_string()),
                     });
                 }
             }
@@ -92,6 +93,7 @@ impl Backend for CargoBackend {
                             manager: PackageManager::Cargo,
                             version,
                             source: Some(source),
+                            icon: None,
                         });
                     }
                 }
@@ -152,6 +154,33 @@ impl Backend for CargoBackend {
     }
 }
 
+fn build_desktop_icon_map() -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let apps_dir = std::path::Path::new("/usr/share/applications");
+    if let Ok(entries) = std::fs::read_dir(apps_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "desktop") {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    let mut icon = None;
+                    for line in content.lines() {
+                        if line.starts_with("Icon=") {
+                            icon = Some(line["Icon=".len()..].trim().to_string());
+                            break;
+                        }
+                    }
+                    if let Some(ic) = icon {
+                        if let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            map.insert(file_stem.to_lowercase(), ic);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
 impl Backend for DnfBackend {
     fn get_packages(&self) -> Result<Vec<Package>> {
         // We use repoquery to get a stable, tab-separated format for installed packages
@@ -164,6 +193,7 @@ impl Backend for DnfBackend {
             ])
             .output()?;
 
+        let icon_map = build_desktop_icon_map();
         let mut packages = Vec::new();
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -172,13 +202,30 @@ impl Backend for DnfBackend {
                 if parts.len() >= 3 {
                     let source_raw = parts[2].trim_start_matches('@').trim();
                     let source_str = source_raw.to_string();
+                    
+                    let pkg_name = parts[0].to_string();
+                    let pkg_lower = pkg_name.to_lowercase();
+                    let mut icon_name = pkg_name.clone();
+                    
+                    if let Some(exact_icon) = icon_map.get(&pkg_lower) {
+                        icon_name = exact_icon.clone();
+                    } else {
+                        for (stem, icon) in &icon_map {
+                            let stem_parts: Vec<&str> = stem.split('.').collect();
+                            if stem_parts.contains(&pkg_lower.as_str()) {
+                                icon_name = icon.clone();
+                                break;
+                            }
+                        }
+                    }
 
                     packages.push(Package {
-                        id: parts[0].to_string(),
-                        name: parts[0].to_string(),
+                        id: pkg_name.clone(),
+                        name: pkg_name,
                         manager: PackageManager::Dnf,
                         version: parts[1].to_string(),
                         source: Some(source_str),
+                        icon: Some(icon_name),
                     });
                 }
             }

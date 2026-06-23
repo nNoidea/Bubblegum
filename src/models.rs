@@ -24,6 +24,7 @@ pub struct Package {
     pub manager: PackageManager,
     pub version: String,
     pub source: Option<String>,
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone)]
