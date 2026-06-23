@@ -37,6 +37,7 @@ impl Backend for CargoBackend {
                             description: None,
                             size: None,
                             install_date: None,
+                            is_dependency: false,
                         });
                     }
                 }

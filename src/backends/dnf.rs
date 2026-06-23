@@ -40,7 +40,7 @@ impl Backend for DnfBackend {
                 "repoquery",
                 "--installed",
                 "--qf",
-                "%{name}\t%{version}\t%{from_repo}\t%{summary}\t%{installsize}\t%{installtime}\n",
+                "%{name}\t%{version}\t%{from_repo}\t%{summary}\t%{installsize}\t%{installtime}\t%{reason}\n",
             ])
             .output()?;
 
@@ -84,6 +84,9 @@ impl Backend for DnfBackend {
                             .map(|dt| dt.format("%b %e, %Y").to_string())
                     });
 
+                    let reason = parts.get(6).unwrap_or(&"");
+                    let is_dependency = reason.to_lowercase().contains("depend");
+
                     packages.push(Package {
                         id: pkg_name.clone(),
                         name: pkg_name,
@@ -94,6 +97,7 @@ impl Backend for DnfBackend {
                         description: summary,
                         size: size_str,
                         install_date: date_str,
+                        is_dependency,
                     });
                 }
             }

@@ -43,6 +43,8 @@ fn main() -> glib::ExitCode {
             .pm-dnf { background-color: @accent_bg_color; color: @accent_fg_color; }
             .pm-flatpak { background-color: @success_bg_color; color: @success_fg_color; }
             .pm-cargo { background-color: @error_bg_color; color: @error_fg_color; }
+            .dep-badge { background-color: alpha(@window_fg_color, 0.1); color: @window_fg_color; border-radius: 6px; padding: 2px 6px; font-size: 0.9em; font-weight: bold; }
+            .user-badge { background-color: alpha(@accent_bg_color, 0.2); color: @accent_bg_color; border-radius: 6px; padding: 2px 6px; font-size: 0.9em; font-weight: bold; }
             .source-label {
                 padding: 2px 6px;
                 border-radius: 6px;

@@ -102,34 +102,21 @@ fn inject_color_css_if_needed(source_text: &str) -> String {
     class_name
 }
 
-fn resolve_icon_name(pkg_icon: Option<&str>) -> String {
+pub fn resolve_icon_name(pkg_icon: Option<&str>) -> Option<String> {
     if let Some(display) = gtk::gdk::Display::default() {
         let theme = gtk::IconTheme::for_display(&display);
         
         if let Some(icon) = pkg_icon {
             if theme.has_icon(icon) {
-                return icon.to_string();
+                return Some(icon.to_string());
             }
             let sym = format!("{}-symbolic", icon);
             if theme.has_icon(&sym) {
-                return sym;
-            }
-        }
-        
-        for fallback in &[
-            "package-x-generic",
-            "package-x-generic-symbolic",
-            "system-software-install",
-            "system-software-install-symbolic",
-            "application-x-executable",
-            "application-x-executable-symbolic"
-        ] {
-            if theme.has_icon(fallback) {
-                return fallback.to_string();
+                return Some(sym);
             }
         }
     }
-    String::from("application-x-executable")
+    None
 }
 
 pub fn build_window(app: &adw::Application, state: AppState) {
@@ -305,6 +292,12 @@ fn build_packages_page(
         badges_box.append(&pm_label);
         badges_box.append(&source_label);
 
+        let dep_label = gtk::Label::builder()
+            .css_classes(["dep-badge"].to_vec())
+            .label("Dependency")
+            .build();
+        badges_box.append(&dep_label);
+
         let version_label = gtk::Label::builder()
             .halign(gtk::Align::Start)
             .ellipsize(gtk::pango::EllipsizeMode::End)
@@ -364,6 +357,11 @@ fn build_packages_page(
             .unwrap()
             .downcast::<gtk::Label>()
             .unwrap();
+        let dep_label = source_label
+            .next_sibling()
+            .unwrap()
+            .downcast::<gtk::Label>()
+            .unwrap();
 
         let item = list_item.item().unwrap();
         let boxed = item.downcast_ref::<glib::BoxedAnyObject>().unwrap();
@@ -371,8 +369,13 @@ fn build_packages_page(
 
         name_label.set_text(&pkg.name);
         
-        let icon_name = resolve_icon_name(pkg.icon.as_deref());
-        icon_img.set_icon_name(Some(&icon_name));
+        let icon_name = pkg.icon.as_deref();
+        if let Some(name) = &icon_name {
+            icon_img.set_icon_name(Some(name));
+            icon_img.set_visible(true);
+        } else {
+            icon_img.set_visible(false);
+        }
 
         let (pm_text, pm_class) = match pkg.manager {
             crate::models::PackageManager::Dnf => ("DNF", "pm-dnf"),
@@ -391,6 +394,17 @@ fn build_packages_page(
 
         let class_name = inject_color_css_if_needed(source_text);
         source_label.set_css_classes(&["source-label", &class_name]);
+
+        if pkg.is_dependency {
+            dep_label.set_text("Dependency");
+            dep_label.remove_css_class("user-badge");
+            dep_label.add_css_class("dep-badge");
+        } else {
+            dep_label.set_text("User");
+            dep_label.remove_css_class("dep-badge");
+            dep_label.add_css_class("user-badge");
+        }
+        dep_label.set_visible(true);
 
         version_label.set_text(&pkg.version);
     });
@@ -576,8 +590,20 @@ fn build_packages_page(
         toast_overlay.add_toast(t);
     }));
 
+    let d_dep_label = gtk::Label::builder()
+        .css_classes(["dep-badge"].to_vec())
+        .label("Dependency")
+        .build();
+    let d_dep_btn = gtk::Button::builder()
+        .child(&d_dep_label)
+        .css_classes(["flat", "compact-btn"].to_vec())
+        .halign(gtk::Align::Start)
+        .build();
+
     d_badges_box.append(&pm_btn);
     d_badges_box.append(&source_btn);
+    d_badges_box.append(&d_dep_btn);
+    
     let d_version = gtk::Label::builder()
         .halign(gtk::Align::Start)
         .build();
@@ -677,13 +703,20 @@ fn build_packages_page(
         d_date,
         #[weak]
         d_size_date_box,
+        #[weak]
+        d_dep_btn,
         move |model| {
             if let Some(item) = model.selected_item() {
                 let boxed = item.downcast_ref::<glib::BoxedAnyObject>().unwrap();
                 let pkg = boxed.borrow::<Package>();
                 
-                let icon_name = resolve_icon_name(pkg.icon.as_deref());
-                d_icon_img.set_icon_name(Some(&icon_name));
+                let icon_name = pkg.icon.as_deref();
+                if let Some(name) = &icon_name {
+                    d_icon_img.set_icon_name(Some(name));
+                    d_icon_img.set_visible(true);
+                } else {
+                    d_icon_img.set_visible(false);
+                }
 
                 d_name.set_text(&pkg.name);
                 
@@ -704,6 +737,17 @@ fn build_packages_page(
                 d_source_provider.load_from_data(&format!("label {{ background-color: {}; color: {}; }}", bg, fg));
 
                 d_version.set_text(&pkg.version);
+                let d_dep_label = d_dep_btn.child().unwrap().downcast::<gtk::Label>().unwrap();
+                if pkg.is_dependency {
+                    d_dep_label.set_text("Dependency");
+                    d_dep_label.remove_css_class("user-badge");
+                    d_dep_label.add_css_class("dep-badge");
+                } else {
+                    d_dep_label.set_text("User");
+                    d_dep_label.remove_css_class("dep-badge");
+                    d_dep_label.add_css_class("user-badge");
+                }
+                d_dep_btn.set_visible(true);
                 
                 if let Some(desc) = &pkg.description {
                     d_description.set_text(desc);

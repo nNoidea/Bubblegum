@@ -41,6 +41,16 @@ impl AppState {
             }
         }
 
+        for p in &mut all_pkgs {
+            p.icon = crate::ui::resolve_icon_name(p.icon.as_deref());
+        }
+
+        all_pkgs.sort_by(|a, b| {
+            a.is_dependency.cmp(&b.is_dependency)
+                .then(b.icon.is_some().cmp(&a.icon.is_some()))
+                .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
+
         let glib_pkgs: Vec<glib::BoxedAnyObject> = all_pkgs.into_iter().map(glib::BoxedAnyObject::new).collect();
         self.packages.splice(0, self.packages.n_items(), &glib_pkgs);
 

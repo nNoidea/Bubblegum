@@ -30,6 +30,7 @@ impl Backend for FlatpakBackend {
                         description,
                         size,
                         install_date: None,
+                        is_dependency: false,
                     });
                 }
             }

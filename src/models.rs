@@ -28,6 +28,7 @@ pub struct Package {
     pub description: Option<String>,
     pub size: Option<String>,
     pub install_date: Option<String>,
+    pub is_dependency: bool,
 }
 
 #[derive(Debug, Clone)]
