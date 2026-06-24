@@ -15,14 +15,20 @@ fn build_desktop_icon_map() -> std::collections::HashMap<String, String> {
             if path.extension().is_some_and(|ext| ext == "desktop") {
                 if let Ok(content) = std::fs::read_to_string(&path) {
                     let mut icon = None;
+                    let mut skip = false;
                     for line in content.lines() {
-                        if line.starts_with("Icon=") {
-                            icon = Some(line["Icon=".len()..].trim().to_string());
+                        let trimmed = line.trim();
+                        if trimmed == "NoDisplay=true" || trimmed == "Hidden=true" {
+                            skip = true;
                             break;
                         }
+                        if trimmed.starts_with("Icon=") {
+                            icon = Some(trimmed["Icon=".len()..].trim().to_string());
+                        }
                     }
-                    if let Some(ic) = icon {
+                    if !skip {
                         if let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            let ic = icon.unwrap_or_else(|| "".to_string());
                             map.insert(file_stem.to_lowercase(), ic);
                         }
                     }
@@ -57,14 +63,21 @@ impl Backend for DnfBackend {
                     let pkg_name = parts[0].to_string();
                     let pkg_lower = pkg_name.to_lowercase();
                     let mut icon_name = pkg_name.clone();
+                    let mut is_gui = false;
                     
                     if let Some(exact_icon) = icon_map.get(&pkg_lower) {
-                        icon_name = exact_icon.clone();
+                        if !exact_icon.is_empty() {
+                            icon_name = exact_icon.clone();
+                        }
+                        is_gui = true;
                     } else {
                         for (stem, icon) in &icon_map {
                             let stem_parts: Vec<&str> = stem.split('.').collect();
                             if stem_parts.contains(&pkg_lower.as_str()) {
-                                icon_name = icon.clone();
+                                if !icon.is_empty() {
+                                    icon_name = icon.clone();
+                                }
+                                is_gui = true;
                                 break;
                             }
                         }
@@ -85,7 +98,10 @@ impl Backend for DnfBackend {
                     });
 
                     let reason = parts.get(6).unwrap_or(&"");
-                    let is_dependency = reason.to_lowercase().contains("depend");
+                    let mut is_dependency = reason.to_lowercase().contains("depend");
+                    if is_gui {
+                        is_dependency = false;
+                    }
 
                     packages.push(Package {
                         id: pkg_name.clone(),

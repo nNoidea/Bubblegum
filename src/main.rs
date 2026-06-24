@@ -35,34 +35,34 @@ fn main() -> glib::ExitCode {
                 padding-bottom: 240px;
             }
             .pm-label {
-                padding: 2px 6px;
+                background-color: alpha(currentColor, 0.2);
+                color: currentColor;
+                padding: 4px 8px;
                 border-radius: 6px;
                 font-weight: bold;
-                font-size: 0.9em;
             }
-            .pm-dnf { background-color: @accent_bg_color; color: @accent_fg_color; }
-            .pm-flatpak { background-color: @success_bg_color; color: @success_fg_color; }
-            .pm-cargo { background-color: @error_bg_color; color: @error_fg_color; }
-            .dep-badge { background-color: alpha(@window_fg_color, 0.1); color: @window_fg_color; border-radius: 6px; padding: 2px 6px; font-size: 0.9em; font-weight: bold; }
-            .user-badge { background-color: alpha(@accent_bg_color, 0.2); color: @accent_bg_color; border-radius: 6px; padding: 2px 6px; font-size: 0.9em; font-weight: bold; }
+            .pm-dnf { background-color: shade(@accent_bg_color, 0.6); color: @accent_fg_color; }
+            .pm-flatpak { background-color: shade(@success_bg_color, 0.6); color: @success_fg_color; }
+            .pm-cargo { background-color: shade(@error_bg_color, 0.6); color: @error_fg_color; }
+            .dep-badge { background-color: alpha(currentColor, 0.1); color: currentColor; border-radius: 6px; padding: 4px 8px; font-weight: bold; }
+            .user-badge { background-color: alpha(currentColor, 0.25); color: currentColor; border-radius: 6px; padding: 4px 8px; font-weight: bold; }
             .source-label {
-                padding: 2px 6px;
+                padding: 4px 8px;
                 border-radius: 6px;
                 font-weight: bold;
-                font-size: 0.9em;
             }
             .repo-page-label {
-                font-size: 0.9em;
                 padding: 4px 10px;
             }
-            .compact-btn {
-                min-height: 28px;
-                padding-top: 4px;
-                padding-bottom: 4px;
-                padding-left: 6px;
-                padding-right: 6px;
+            .copy-btn {
+                min-height: 24px;
+                padding: 4px 8px;
+                border-radius: 6px;
             }
-        ",
+            .copy-btn:hover {
+                background-color: alpha(currentColor, 0.15);
+            }
+            ",
         );
         gtk::style_context_add_provider_for_display(
             &gtk::gdk::Display::default().unwrap(),

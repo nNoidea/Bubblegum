@@ -81,8 +81,8 @@ fn inject_color_css_if_needed(source_text: &str) -> String {
             GLOBAL_CSS.with(|css| {
                 let mut css_str = css.borrow_mut();
                 css_str.push_str(&format!(
-                    ".{} {{ background-color: {}; color: {}; }}\n",
-                    class_name, bg, fg
+                    ".{} {{ background-color: {}; color: {}; }}\n.{}:hover {{ background-color: mix({}, black, 0.2); }}\n",
+                    class_name, bg, fg, class_name, bg
                 ));
                 
                 GLOBAL_PROVIDER.with(|provider| {
@@ -132,15 +132,29 @@ pub fn build_window(app: &adw::Application, state: AppState) {
         }
     }
 
+    let toast_overlay = adw::ToastOverlay::new();
+    let active_toast: Arc<Mutex<Option<adw::Toast>>> = Arc::new(Mutex::new(None));
+
     let header_bar = adw::HeaderBar::new();
 
     let refresh_btn = gtk::Button::from_icon_name("view-refresh-symbolic");
     refresh_btn.set_tooltip_text(Some("Refresh Packages"));
+    refresh_btn.set_cursor_from_name(Some("pointer"));
     let state_for_refresh = state.clone();
+    let toast_overlay_refresh = toast_overlay.clone();
+    let active_toast_refresh = active_toast.clone();
     refresh_btn.connect_clicked(move |_| {
         let state = state_for_refresh.clone();
+        let overlay = toast_overlay_refresh.clone();
+        let active_t = active_toast_refresh.clone();
         glib::spawn_future_local(async move {
             let _ = state.fetch_all().await;
+            if let Some(prev) = active_t.lock().unwrap().take() {
+                prev.dismiss();
+            }
+            let t = adw::Toast::new("Refreshed successfully");
+            *active_t.lock().unwrap() = Some(t.clone());
+            overlay.add_toast(t);
         });
     });
     header_bar.pack_start(&refresh_btn);
@@ -150,6 +164,7 @@ pub fn build_window(app: &adw::Application, state: AppState) {
         .stack(&view_stack)
         .policy(adw::ViewSwitcherPolicy::Wide)
         .build();
+    view_switcher.set_cursor_from_name(Some("pointer"));
     header_bar.set_title_widget(Some(&view_switcher));
 
     let search_entry = gtk::SearchEntry::builder()
@@ -158,9 +173,6 @@ pub fn build_window(app: &adw::Application, state: AppState) {
     search_entry.set_width_request(300);
 
     header_bar.pack_end(&search_entry);
-
-    let toast_overlay = adw::ToastOverlay::new();
-    let active_toast: Arc<Mutex<Option<adw::Toast>>> = Arc::new(Mutex::new(None));
 
     let packages_page = build_packages_page(state.clone(), &search_entry, &toast_overlay, active_toast.clone());
     let page = view_stack.add_titled(&packages_page, Some("packages"), "Packages");
@@ -245,6 +257,7 @@ fn build_packages_page(
     factory.connect_setup(move |_, list_item| {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
         card.add_css_class("card");
+        card.set_cursor_from_name(Some("pointer"));
         card.set_margin_start(3);
         card.set_margin_end(3);
         card.set_margin_top(3);
@@ -384,10 +397,10 @@ fn build_packages_page(
         };
         pm_label.set_text(pm_text);
 
-        pm_label.remove_css_class("pm-dnf");
-        pm_label.remove_css_class("pm-flatpak");
-        pm_label.remove_css_class("pm-cargo");
-        pm_label.add_css_class(pm_class);
+        card.remove_css_class("pm-dnf");
+        card.remove_css_class("pm-flatpak");
+        card.remove_css_class("pm-cargo");
+        card.add_css_class(pm_class);
 
         let source_text = pkg.source.as_deref().unwrap_or("Unknown");
         source_label.set_text(source_text);
@@ -553,39 +566,23 @@ fn build_packages_page(
         .css_classes(["pm-label"].to_vec())
         .build();
     let d_source_label = gtk::Label::builder()
-        .css_classes(["source-label"].to_vec())
         .build();
     let d_source_provider = gtk::CssProvider::new();
-    d_source_label.style_context().add_provider(&d_source_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-
-    let pm_btn = gtk::Button::builder()
-        .child(&d_pm_label)
-        .css_classes(["flat", "compact-btn"].to_vec())
-        .halign(gtk::Align::Start)
-        .build();
-    pm_btn.connect_clicked(glib::clone!(#[weak] d_pm_label, #[weak] toast_overlay, #[strong] active_toast, move |b| {
-        let clipboard = b.clipboard();
-        clipboard.set_text(&d_pm_label.text());
-        if let Some(prev) = active_toast.lock().unwrap().take() {
-            prev.dismiss();
-        }
-        let t = adw::Toast::new("Package manager copied!");
-        *active_toast.lock().unwrap() = Some(t.clone());
-        toast_overlay.add_toast(t);
-    }));
 
     let source_btn = gtk::Button::builder()
         .child(&d_source_label)
-        .css_classes(["flat", "compact-btn"].to_vec())
+        .css_classes(["flat", "copy-btn"].to_vec())
         .halign(gtk::Align::Start)
         .build();
+    source_btn.set_cursor_from_name(Some("pointer"));
+    source_btn.style_context().add_provider(&d_source_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
     source_btn.connect_clicked(glib::clone!(#[weak] d_source_label, #[weak] toast_overlay, #[strong] active_toast, move |b| {
         let clipboard = b.clipboard();
         clipboard.set_text(&d_source_label.text());
         if let Some(prev) = active_toast.lock().unwrap().take() {
             prev.dismiss();
         }
-        let t = adw::Toast::new("Repository source copied!");
+        let t = adw::Toast::new("Copied to clipboard!");
         *active_toast.lock().unwrap() = Some(t.clone());
         toast_overlay.add_toast(t);
     }));
@@ -594,15 +591,9 @@ fn build_packages_page(
         .css_classes(["dep-badge"].to_vec())
         .label("Dependency")
         .build();
-    let d_dep_btn = gtk::Button::builder()
-        .child(&d_dep_label)
-        .css_classes(["flat", "compact-btn"].to_vec())
-        .halign(gtk::Align::Start)
-        .build();
-
-    d_badges_box.append(&pm_btn);
+    d_badges_box.append(&d_pm_label);
     d_badges_box.append(&source_btn);
-    d_badges_box.append(&d_dep_btn);
+    d_badges_box.append(&d_dep_label);
     
     let d_version = gtk::Label::builder()
         .halign(gtk::Align::Start)
@@ -610,32 +601,35 @@ fn build_packages_page(
 
     let d_name_btn = gtk::Button::builder()
         .child(&d_name)
-        .css_classes(["flat", "compact-btn"].to_vec())
+        .css_classes(["flat", "copy-btn"].to_vec())
         .halign(gtk::Align::Start)
+        .margin_bottom(4)
         .build();
+    d_name_btn.set_cursor_from_name(Some("pointer"));
     d_name_btn.connect_clicked(glib::clone!(#[weak] d_name, #[weak] toast_overlay, #[strong] active_toast, move |b| {
         let clipboard = b.clipboard();
         clipboard.set_text(&d_name.text());
         if let Some(prev) = active_toast.lock().unwrap().take() {
             prev.dismiss();
         }
-        let t = adw::Toast::new("Package name copied!");
+        let t = adw::Toast::new("Copied to clipboard!");
         *active_toast.lock().unwrap() = Some(t.clone());
         toast_overlay.add_toast(t);
     }));
 
     let version_btn = gtk::Button::builder()
         .child(&d_version)
-        .css_classes(["flat", "compact-btn"].to_vec())
+        .css_classes(["flat", "copy-btn"].to_vec())
         .halign(gtk::Align::Start)
         .build();
+    version_btn.set_cursor_from_name(Some("pointer"));
     version_btn.connect_clicked(glib::clone!(#[weak] d_version, #[weak] toast_overlay, #[strong] active_toast, move |b| {
         let clipboard = b.clipboard();
         clipboard.set_text(&d_version.text());
         if let Some(prev) = active_toast.lock().unwrap().take() {
             prev.dismiss();
         }
-        let t = adw::Toast::new("Version copied!");
+        let t = adw::Toast::new("Copied to clipboard!");
         *active_toast.lock().unwrap() = Some(t.clone());
         toast_overlay.add_toast(t);
     }));
@@ -648,11 +642,11 @@ fn build_packages_page(
         .halign(gtk::Align::Start)
         .wrap(true)
         .selectable(true)
-        .margin_start(6)
+        .margin_start(8)
         .build();
 
     let d_size_date_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    d_size_date_box.set_margin_start(6);
+    d_size_date_box.set_margin_start(8);
     let d_size = gtk::Label::builder()
         .halign(gtk::Align::Start)
         .build();
@@ -670,6 +664,7 @@ fn build_packages_page(
         .css_classes(["destructive-action"].to_vec())
         .valign(gtk::Align::Center)
         .build();
+    uninstall_btn.set_cursor_from_name(Some("pointer"));
 
     let d_icon_img = gtk::Image::builder()
         .pixel_size(48)
@@ -683,6 +678,8 @@ fn build_packages_page(
     selection_model.connect_selected_item_notify(glib::clone!(
         #[weak]
         revealer,
+        #[weak]
+        detail_box,
         #[weak]
         d_name,
         #[weak]
@@ -704,7 +701,7 @@ fn build_packages_page(
         #[weak]
         d_size_date_box,
         #[weak]
-        d_dep_btn,
+        d_dep_label,
         move |model| {
             if let Some(item) = model.selected_item() {
                 let boxed = item.downcast_ref::<glib::BoxedAnyObject>().unwrap();
@@ -726,6 +723,9 @@ fn build_packages_page(
                     crate::models::PackageManager::Cargo => ("Cargo", "pm-cargo"),
                 };
                 d_pm_label.set_text(pm_text);
+                detail_box.remove_css_class("pm-dnf");
+                detail_box.remove_css_class("pm-flatpak");
+                detail_box.remove_css_class("pm-cargo");
                 d_pm_label.remove_css_class("pm-dnf");
                 d_pm_label.remove_css_class("pm-flatpak");
                 d_pm_label.remove_css_class("pm-cargo");
@@ -734,10 +734,9 @@ fn build_packages_page(
                 let source_text = pkg.source.as_deref().unwrap_or("Unknown");
                 d_source_label.set_text(source_text);
                 let (bg, fg) = crate::ui::generate_color(source_text);
-                d_source_provider.load_from_data(&format!("label {{ background-color: {}; color: {}; }}", bg, fg));
+                d_source_provider.load_from_data(&format!("* {{ background-color: {}; color: {}; }} *:hover {{ background-color: mix({}, black, 0.2); }}", bg, fg, bg));
 
                 d_version.set_text(&pkg.version);
-                let d_dep_label = d_dep_btn.child().unwrap().downcast::<gtk::Label>().unwrap();
                 if pkg.is_dependency {
                     d_dep_label.set_text("Dependency");
                     d_dep_label.remove_css_class("user-badge");
@@ -747,7 +746,7 @@ fn build_packages_page(
                     d_dep_label.remove_css_class("dep-badge");
                     d_dep_label.add_css_class("user-badge");
                 }
-                d_dep_btn.set_visible(true);
+                d_dep_label.set_visible(true);
                 
                 if let Some(desc) = &pkg.description {
                     d_description.set_text(desc);
@@ -902,7 +901,10 @@ fn build_repositories_page(
         let boxed = item.downcast_ref::<glib::BoxedAnyObject>().unwrap();
         let repo = boxed.borrow::<Repository>();
 
-        let expander = adw::ExpanderRow::builder().title("").build();
+        let expander = adw::ExpanderRow::builder()
+            .title("")
+            .build();
+        expander.set_cursor_from_name(Some("pointer"));
 
         let prefix_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
 
@@ -917,14 +919,14 @@ fn build_repositories_page(
             .build();
 
         let class_name = inject_color_css_if_needed(&repo.name);
-        title_label.set_css_classes(&["source-label", "repo-page-label", &class_name]);
 
         let title_btn = gtk::Button::builder()
             .child(&title_label)
-            .css_classes(["flat"].to_vec())
+            .css_classes(["flat", "source-label", "repo-page-label", &class_name].to_vec())
             .halign(gtk::Align::Start)
             .margin_top(12)
             .build();
+        title_btn.set_cursor_from_name(Some("pointer"));
         
         let title_clone = repo.name.clone();
         let overlay_btn_clone_title = overlay_clone.clone();
@@ -953,27 +955,7 @@ fn build_repositories_page(
         pm_label.set_text(pm_text);
         pm_label.add_css_class(pm_class);
 
-        let pm_btn = gtk::Button::builder()
-            .child(&pm_label)
-            .css_classes(["flat"].to_vec())
-            .halign(gtk::Align::Start)
-            .margin_bottom(12)
-            .build();
-
-        let pm_clone = pm_text.to_string();
-        let overlay_btn_clone_pm = overlay_clone.clone();
-        let active_toast_btn_clone_pm = active_toast.clone();
-        pm_btn.connect_clicked(move |btn| {
-            btn.clipboard().set_text(&pm_clone);
-            if let Some(old_toast) = active_toast_btn_clone_pm.lock().unwrap().take() {
-                old_toast.dismiss();
-            }
-            let t = adw::Toast::new("Copied to clipboard!");
-            *active_toast_btn_clone_pm.lock().unwrap() = Some(t.clone());
-            overlay_btn_clone_pm.add_toast(t);
-        });
-
-        text_vbox.append(&pm_btn);
+        text_vbox.append(&pm_label);
 
         prefix_box.append(&text_vbox);
         expander.add_prefix(&prefix_box);
@@ -992,6 +974,7 @@ fn build_repositories_page(
                 .subtitle(safe_url)
                 .activatable(true)
                 .build();
+            url_row.set_cursor_from_name(Some("pointer"));
 
             let url_clone = url.clone();
             let overlay_btn_clone = overlay_clone.clone();
@@ -1016,6 +999,7 @@ fn build_repositories_page(
                 .subtitle(safe_path)
                 .activatable(true)
                 .build();
+            path_row.set_cursor_from_name(Some("pointer"));
 
             let path_clone = path.clone();
             let overlay_btn_clone = overlay_clone.clone();
