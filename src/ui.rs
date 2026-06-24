@@ -81,8 +81,8 @@ fn inject_color_css_if_needed(source_text: &str) -> String {
             GLOBAL_CSS.with(|css| {
                 let mut css_str = css.borrow_mut();
                 css_str.push_str(&format!(
-                    ".{} {{ background-color: {}; color: {}; }}\n.{}:hover {{ background-color: mix({}, black, 0.2); }}\n",
-                    class_name, bg, fg, class_name, bg
+                    ".{} {{ background-color: {}; color: {}; }}\n",
+                    class_name, bg, fg
                 ));
                 
                 GLOBAL_PROVIDER.with(|provider| {
