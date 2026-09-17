@@ -1,6 +1,6 @@
 # Bubblegum
 
-A unified package manager GUI for GNOME, manage all your packages across **DNF**, **Flatpak**, and **Cargo** from one place.
+A unified package manager GUI, manage all your packages across **DNF**, **Flatpak**, and **Cargo** from one place.
 
 ## Screenshots
 
@@ -22,9 +22,9 @@ A unified package manager GUI for GNOME, manage all your packages across **DNF**
 
 ### Dependencies
 
-- Rust 2024 edition
-- GTK4, Libadwaita (1.6+)
-- DNF, Flatpak, Cargo (for runtime package management)
+- Rust 
+- GTK4, Libadwaita 
+- At least one of: DNF, Flatpak, Cargo
 
 ### Build, Run & Install
 
