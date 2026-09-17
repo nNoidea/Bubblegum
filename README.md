@@ -41,4 +41,4 @@ cargo run --release
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+GPL-3.0-or-later — see [LICENSE](LICENSE).
