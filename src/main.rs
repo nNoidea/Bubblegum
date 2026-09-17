@@ -62,6 +62,32 @@ fn main() -> glib::ExitCode {
             .copy-btn:hover {
                 background-color: alpha(currentColor, 0.15);
             }
+            .status-badge {
+                padding: 2px 8px;
+                border-radius: 9999px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            .status-loaded { background-color: alpha(@success_color, 0.2); color: @success_color; }
+            .status-unavailable { background-color: alpha(@warning_color, 0.2); color: @warning_color; }
+            .status-failed { background-color: alpha(@error_color, 0.2); color: @error_color; }
+            .status-loading { background-color: alpha(@accent_color, 0.2); color: @accent_color; }
+            .status-idle { opacity: 0.6; }
+            .log-terminal {
+                background-color: #1a1a24;
+                border: 1px solid @borders;
+                border-radius: 12px;
+                box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
+                padding: 4px;
+            }
+            .log-terminal textview,
+            .log-terminal text {
+                background-color: transparent;
+                color: #e2e4ed;
+                font-family: 'Monospace', 'Source Code Pro', 'DejaVu Sans Mono', monospace;
+                font-size: 12px;
+                line-height: 1.45;
+            }
             ",
         );
         gtk::style_context_add_provider_for_display(

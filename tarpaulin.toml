@@ -1,0 +1,6 @@
+# Cargo Tarpaulin Configuration for BubblegumGNOME2
+[tarpaulin]
+out = ["Stdout", "Html"]
+output_dir = "target/tarpaulin"
+timeout = "120s"
+skip_clean = true

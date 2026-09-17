@@ -1,0 +1,55 @@
+name: Test & Code Coverage
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Run Tests & Verify Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check Formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run Tests
+        run: cargo test --all-targets --all-features
+
+      - name: Install Cargo Tarpaulin (Pinned v0.37.2)
+        run: |
+          TARPAULIN_VERSION="0.37.2"
+          TARPAULIN_SHA256="837dc54d21da101e96e888c6f6680d25f3c06554b0614880ea385cdf68cd5173"
+          curl -sSL "https://github.com/xd009642/tarpaulin/releases/download/${TARPAULIN_VERSION}/cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz" -o tarpaulin.tar.gz
+          echo "${TARPAULIN_SHA256}  tarpaulin.tar.gz" | sha256sum -c -
+          mkdir -p ~/.cargo/bin
+          tar -xzf tarpaulin.tar.gz -C ~/.cargo/bin/
+          rm tarpaulin.tar.gz
+
+      - name: Run Code Coverage
+        run: cargo tarpaulin --fail-under 35 --out Html --out Stdout --output-dir target/tarpaulin
+
+      - name: Dependency Audit
+        uses: rustsec/audit-check@v1.4.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
