@@ -495,9 +495,7 @@ pub fn open_uninstall_log_dialog(
     let toolbar_view = adw::ToolbarView::new();
 
     let header_bar = adw::HeaderBar::new();
-    let window_title = adw::WindowTitle::builder()
-        .title("Uninstalling")
-        .build();
+    let window_title = adw::WindowTitle::builder().title("Uninstalling").build();
     header_bar.set_title_widget(Some(&window_title));
     toolbar_view.add_top_bar(&header_bar);
 
@@ -517,7 +515,7 @@ pub fn open_uninstall_log_dialog(
         .build();
 
     let pm_label = gtk::Label::builder()
-        .label(&pkg.manager.to_string())
+        .label(pkg.manager.to_string())
         .css_classes(vec![
             "pm-label".to_string(),
             match pkg.manager {
@@ -537,7 +535,10 @@ pub fn open_uninstall_log_dialog(
 
     let status_badge = gtk::Label::builder()
         .label("RUNNING")
-        .css_classes(vec!["status-badge".to_string(), "status-loading".to_string()])
+        .css_classes(vec![
+            "status-badge".to_string(),
+            "status-loading".to_string(),
+        ])
         .build();
 
     let spinner = gtk::Spinner::builder().spinning(true).build();
@@ -1635,7 +1636,8 @@ mod tests {
             let toast_overlay = adw::ToastOverlay::new();
             let active_toast = Rc::new(RefCell::new(None));
             let pkgs = vec!["pkg1".to_string(), "pkg2".to_string()];
-            let widget = build_affected_packages_widget(&pkgs, Some(&toast_overlay), Some(&active_toast));
+            let widget =
+                build_affected_packages_widget(&pkgs, Some(&toast_overlay), Some(&active_toast));
             assert!(widget.is_some());
             let widget = widget.unwrap();
             let scrolled = widget
@@ -1702,16 +1704,24 @@ mod tests {
                 .build();
             let button = build_copy_output_button(&icon);
             let child = button.child().expect("button should have a child");
-            let box_widget = child.downcast_ref::<gtk::Box>().expect("child should be a Box");
+            let box_widget = child
+                .downcast_ref::<gtk::Box>()
+                .expect("child should be a Box");
             assert_eq!(box_widget.orientation(), gtk::Orientation::Horizontal);
             assert_eq!(box_widget.spacing(), 6);
 
             let first_child = box_widget.first_child().expect("box should have children");
-            let label = first_child.downcast_ref::<gtk::Label>().expect("first child is Label");
+            let label = first_child
+                .downcast_ref::<gtk::Label>()
+                .expect("first child is Label");
             assert_eq!(label.text().as_str(), "Copy Output");
 
-            let second_child = first_child.next_sibling().expect("box should have second child");
-            let img = second_child.downcast_ref::<gtk::Image>().expect("second child is Image");
+            let second_child = first_child
+                .next_sibling()
+                .expect("box should have second child");
+            let img = second_child
+                .downcast_ref::<gtk::Image>()
+                .expect("second child is Image");
             assert_eq!(img.icon_name().as_deref(), Some("edit-copy-symbolic"));
         }
     }

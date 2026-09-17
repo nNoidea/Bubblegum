@@ -98,12 +98,10 @@ impl CommandRunner for SystemCommandRunner {
                 if let Some(pipe) = stdout {
                     use std::io::BufRead;
                     let reader = std::io::BufReader::new(pipe);
-                    for line in reader.lines() {
-                        if let Ok(l) = line {
-                            on_line(&l);
-                            out_str.push_str(&l);
-                            out_str.push('\n');
-                        }
+                    for l in reader.lines().map_while(Result::ok) {
+                        on_line(&l);
+                        out_str.push_str(&l);
+                        out_str.push('\n');
                     }
                 }
                 out_str
@@ -114,12 +112,10 @@ impl CommandRunner for SystemCommandRunner {
                 if let Some(pipe) = stderr {
                     use std::io::BufRead;
                     let reader = std::io::BufReader::new(pipe);
-                    for line in reader.lines() {
-                        if let Ok(l) = line {
-                            on_line(&l);
-                            err_str.push_str(&l);
-                            err_str.push('\n');
-                        }
+                    for l in reader.lines().map_while(Result::ok) {
+                        on_line(&l);
+                        err_str.push_str(&l);
+                        err_str.push('\n');
                     }
                 }
                 err_str
@@ -452,4 +448,3 @@ mod tests {
         assert!(out.stderr.contains("err_msg"));
     }
 }
-

@@ -595,12 +595,14 @@ mod tests {
             // Streaming uninstall
             let logs = Arc::new(Mutex::new(Vec::new()));
             let logs_clone = logs.clone();
-            assert!(state
-                .uninstall_with_logs(&pkg, move |line| {
-                    logs_clone.lock().unwrap().push(line);
-                })
-                .await
-                .is_ok());
+            assert!(
+                state
+                    .uninstall_with_logs(&pkg, move |line| {
+                        logs_clone.lock().unwrap().push(line);
+                    })
+                    .await
+                    .is_ok()
+            );
 
             assert_eq!(
                 *logs.lock().unwrap(),
@@ -612,8 +614,16 @@ mod tests {
                 manager: PackageManager::Flatpak,
                 ..pkg.clone()
             };
-            assert!(state.uninstall_with_logs(&flatpak_pkg, |_| {}).await.is_err());
-            assert_eq!(state.check_uninstall_impact(&flatpak_pkg).await.unwrap(), Vec::<String>::new());
+            assert!(
+                state
+                    .uninstall_with_logs(&flatpak_pkg, |_| {})
+                    .await
+                    .is_err()
+            );
+            assert_eq!(
+                state.check_uninstall_impact(&flatpak_pkg).await.unwrap(),
+                Vec::<String>::new()
+            );
         });
     }
 }

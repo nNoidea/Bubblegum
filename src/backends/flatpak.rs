@@ -499,11 +499,13 @@ mod tests {
         };
 
         let logs = std::sync::Mutex::new(Vec::new());
-        assert!(backend
-            .uninstall_with_logs(&pkg, &|line| {
-                logs.lock().unwrap().push(line.to_string());
-            })
-            .is_ok());
+        assert!(
+            backend
+                .uninstall_with_logs(&pkg, &|line| {
+                    logs.lock().unwrap().push(line.to_string());
+                })
+                .is_ok()
+        );
 
         assert_eq!(
             *logs.lock().unwrap(),

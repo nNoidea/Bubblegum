@@ -387,10 +387,7 @@ impl Backend for DnfBackend {
             .runner
             .run_command("dnf", &["remove", "--assumeno", pkg_identifier])?;
 
-        Ok(parse_dnf_remove_simulation(
-            &output.stdout,
-            &package.name,
-        ))
+        Ok(parse_dnf_remove_simulation(&output.stdout, &package.name))
     }
 
     fn uninstall(&self, package: &Package) -> Result<(), BackendError> {
@@ -858,11 +855,13 @@ Transaction Summary:
         };
 
         let logs = std::sync::Mutex::new(Vec::new());
-        assert!(backend
-            .uninstall_with_logs(&pkg, &|line| {
-                logs.lock().unwrap().push(line.to_string());
-            })
-            .is_ok());
+        assert!(
+            backend
+                .uninstall_with_logs(&pkg, &|line| {
+                    logs.lock().unwrap().push(line.to_string());
+                })
+                .is_ok()
+        );
 
         assert_eq!(
             *logs.lock().unwrap(),
@@ -870,4 +869,3 @@ Transaction Summary:
         );
     }
 }
-
