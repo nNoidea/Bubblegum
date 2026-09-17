@@ -1,4 +1,11 @@
-.PHONY: build devbuild run devrun test coverage coverage-check coverage-html
+PREFIX ?= $(HOME)/.local
+BINDIR ?= $(PREFIX)/bin
+DATADIR ?= $(PREFIX)/share
+APPLICATIONS ?= $(DATADIR)/applications
+
+.PHONY: all build devbuild run devrun test check coverage coverage-check coverage-html install uninstall
+
+all: build
 
 build:
 	cargo build --release
@@ -15,6 +22,9 @@ devrun:
 test:
 	cargo test
 
+check:
+	cargo clippy -- -D warnings
+
 coverage:
 	cargo tarpaulin --out Stdout --out Html --output-dir target/tarpaulin
 
@@ -25,3 +35,20 @@ coverage-html:
 	cargo tarpaulin --out Html --output-dir target/tarpaulin
 	@echo "Coverage report generated at: target/tarpaulin/tarpaulin-report.html"
 
+install: build
+	install -d $(BINDIR)
+	install -m 755 target/release/bubblegum $(BINDIR)/bubblegum
+	install -d $(APPLICATIONS)
+	install -m 644 data/com.github.Bubblegum.desktop $(APPLICATIONS)/com.github.Bubblegum.desktop
+	@if command -v update-desktop-database > /dev/null 2>&1; then \
+		update-desktop-database $(APPLICATIONS); \
+	fi
+	@echo "Bubblegum successfully installed to $(BINDIR)/bubblegum"
+
+uninstall:
+	rm -f $(BINDIR)/bubblegum
+	rm -f $(APPLICATIONS)/com.github.Bubblegum.desktop
+	@if command -v update-desktop-database > /dev/null 2>&1; then \
+		update-desktop-database $(APPLICATIONS); \
+	fi
+	@echo "Bubblegum uninstalled"

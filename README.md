@@ -1,4 +1,4 @@
-# BubblegumGNOME
+# Bubblegum
 
 A unified package manager GUI for GNOME, manage all your packages across **DNF**, **Flatpak**, and **Cargo** from one place.
 
@@ -26,17 +26,20 @@ A unified package manager GUI for GNOME, manage all your packages across **DNF**
 - GTK4, Libadwaita (1.6+)
 - DNF, Flatpak, Cargo (for runtime package management)
 
-### Build & Run
+### Build, Run & Install
 
 ```bash
-# Build release
+# Build release binary
 make build
 
 # Run
 make run
 
-# Or directly with Cargo
-cargo run --release
+# Install to ~/.local (binary to ~/.local/bin, desktop entry to ~/.local/share/applications)
+make install
+
+# Uninstall
+make uninstall
 ```
 
 ## License

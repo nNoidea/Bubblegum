@@ -433,6 +433,18 @@ mod tests {
     }
 
     #[test]
+    fn test_app_desktop_file_is_valid() {
+        let content = std::fs::read_to_string("data/com.github.Bubblegum.desktop")
+            .expect("Desktop entry file should exist in data/");
+        assert_eq!(
+            parse_desktop_file_content(&content),
+            Some("system-software-install".to_string())
+        );
+        assert!(content.contains("Exec=bubblegum"));
+        assert!(content.contains("StartupWMClass=com.github.Bubblegum"));
+    }
+
+    #[test]
     fn test_parse_dnf_repoquery_output_9_columns() {
         let mut icon_map = HashMap::new();
         icon_map.insert("firefox".to_string(), "org.mozilla.firefox".to_string());

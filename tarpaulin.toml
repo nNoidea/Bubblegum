@@ -1,4 +1,4 @@
-# Cargo Tarpaulin Configuration for BubblegumGNOME2
+# Cargo Tarpaulin Configuration for Bubblegum
 [tarpaulin]
 out = ["Stdout", "Html"]
 output_dir = "target/tarpaulin"

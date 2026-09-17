@@ -15,7 +15,7 @@ fn main() -> glib::ExitCode {
     let _enter = rt.enter();
 
     let app = adw::Application::builder()
-        .application_id("com.github.BubblegumGNOME2")
+        .application_id("com.github.Bubblegum")
         .build();
 
     let state = AppState::new();

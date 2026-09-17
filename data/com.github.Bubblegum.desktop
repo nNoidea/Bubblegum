@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Bubblegum
+Comment=Unified package manager GUI for GNOME
+Exec=bubblegum
+Icon=system-software-install
+Terminal=false
+Categories=System;PackageManager;GTK;GNOME;
+Keywords=package;manager;dnf;flatpak;cargo;rpm;
+StartupNotify=true
+StartupWMClass=com.github.Bubblegum
