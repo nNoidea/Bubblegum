@@ -533,20 +533,8 @@ pub fn open_uninstall_log_dialog(
         .hexpand(true)
         .build();
 
-    let status_badge = gtk::Label::builder()
-        .label("RUNNING")
-        .css_classes(vec![
-            "status-badge".to_string(),
-            "status-loading".to_string(),
-        ])
-        .build();
-
-    let spinner = gtk::Spinner::builder().spinning(true).build();
-
     status_box.append(&pm_label);
     status_box.append(&pkg_info_label);
-    status_box.append(&status_badge);
-    status_box.append(&spinner);
     content_box.append(&status_box);
 
     let text_view = gtk::TextView::builder()
@@ -585,8 +573,19 @@ pub fn open_uninstall_log_dialog(
         .build();
     let copy_btn = build_copy_output_button(&copy_icon);
 
+    let ok_spinner = gtk::Spinner::builder().spinning(true).build();
+    let ok_label = gtk::Label::new(Some("Deleting…"));
+    let ok_content = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::Center)
+        .valign(gtk::Align::Center)
+        .build();
+    ok_content.append(&ok_spinner);
+    ok_content.append(&ok_label);
+
     let ok_btn = gtk::Button::builder()
-        .label("OK")
+        .child(&ok_content)
         .css_classes(vec!["suggested-action".to_string(), "pill".to_string()])
         .sensitive(false)
         .build();
@@ -677,23 +676,14 @@ pub fn open_uninstall_log_dialog(
             })
             .await;
 
-        spinner.set_spinning(false);
-        spinner.set_visible(false);
+        ok_spinner.set_spinning(false);
+        ok_spinner.set_visible(false);
+        ok_label.set_text("OK");
         ok_btn.set_sensitive(true);
 
-        match result {
-            Ok(()) => {
-                status_badge.set_label("FINISHED");
-                status_badge.remove_css_class("status-loading");
-                status_badge.add_css_class("status-loaded");
-            }
-            Err(err) => {
-                status_badge.set_label("FAILED");
-                status_badge.remove_css_class("status-loading");
-                status_badge.add_css_class("status-failed");
-                let mut end_iter = text_buffer.end_iter();
-                text_buffer.insert(&mut end_iter, &format!("\n[Error]: {}\n", err));
-            }
+        if let Err(err) = result {
+            let mut end_iter = text_buffer.end_iter();
+            text_buffer.insert(&mut end_iter, &format!("\n[Error]: {}\n", err));
         }
     });
 }
