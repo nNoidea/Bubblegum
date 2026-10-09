@@ -88,6 +88,9 @@ fn main() -> glib::ExitCode {
                 font-size: 12px;
                 line-height: 1.45;
             }
+            .detail-visible toast {
+                margin-bottom: 210px;
+            }
             ",
         );
         gtk::style_context_add_provider_for_display(

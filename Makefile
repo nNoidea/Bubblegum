@@ -3,9 +3,17 @@ BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share
 APPLICATIONS ?= $(DATADIR)/applications
 
-.PHONY: all build devbuild run devrun test check coverage coverage-check coverage-html install uninstall
+.PHONY: all build devbuild run devrun test check coverage coverage-check coverage-html install uninstall bump
 
 all: build
+
+# Bump the release version ([package] version is the SSOT) and refresh Cargo.lock.
+bump:
+	@if [ -z "$(NEW_VERSION)" ]; then echo "Usage: make bump NEW_VERSION=x.y.z" >&2; exit 1; fi
+	@echo "$(NEW_VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "Invalid version '$(NEW_VERSION)' (expected X.Y.Z)" >&2; exit 1; }
+	sed -i "0,/^version = \".*\"$$/s//version = \"$(NEW_VERSION)\"/" Cargo.toml
+	@cargo check > /dev/null
+	@echo "Bumped to $(NEW_VERSION) — commit Cargo.toml and Cargo.lock together"
 
 build:
 	cargo build --release

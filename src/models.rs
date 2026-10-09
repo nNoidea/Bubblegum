@@ -36,7 +36,6 @@ pub struct Package {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Repository {
-    #[allow(dead_code)]
     pub id: String,
     pub name: String,
     pub manager: PackageManager,

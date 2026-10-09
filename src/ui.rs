@@ -25,56 +25,6 @@ fn show_toast(
     overlay.add_toast(toast);
 }
 
-fn create_status_badge(name: &str) -> gtk::Label {
-    gtk::Label::builder()
-        .label(format!("{name}: -"))
-        .css_classes(["caption", "status-badge", "status-idle"].to_vec())
-        .halign(gtk::Align::Center)
-        .valign(gtk::Align::Center)
-        .build()
-}
-
-fn update_status_badge(badge: &gtk::Label, name: &str, status: &crate::app_state::BackendStatus) {
-    badge.remove_css_class("status-idle");
-    badge.remove_css_class("status-loading");
-    badge.remove_css_class("status-loaded");
-    badge.remove_css_class("status-unavailable");
-    badge.remove_css_class("status-failed");
-
-    match status {
-        crate::app_state::BackendStatus::Idle => {
-            badge.set_text(&format!("{name}: -"));
-            badge.add_css_class("status-idle");
-            badge.set_tooltip_text(Some(&format!("{name} is idle")));
-        }
-        crate::app_state::BackendStatus::Loading => {
-            badge.set_text(&format!("{name}: Loading..."));
-            badge.add_css_class("status-loading");
-            badge.set_tooltip_text(Some(&format!("{name} is loading...")));
-        }
-        crate::app_state::BackendStatus::Loaded {
-            package_count,
-            repo_count,
-        } => {
-            badge.set_text(&format!("{name}: {package_count}"));
-            badge.add_css_class("status-loaded");
-            badge.set_tooltip_text(Some(&format!(
-                "{name}: {package_count} packages, {repo_count} repositories loaded"
-            )));
-        }
-        crate::app_state::BackendStatus::Unavailable { reason } => {
-            badge.set_text(&format!("{name}: Unavailable"));
-            badge.add_css_class("status-unavailable");
-            badge.set_tooltip_text(Some(&format!("{name} unavailable: {reason}")));
-        }
-        crate::app_state::BackendStatus::Failed { error } => {
-            badge.set_text(&format!("{name}: Failed"));
-            badge.add_css_class("status-failed");
-            badge.set_tooltip_text(Some(&format!("{name} failed: {error}")));
-        }
-    }
-}
-
 thread_local! {
     static INJECTED_COLORS: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
     static GLOBAL_PROVIDER: gtk::CssProvider = gtk::CssProvider::new();
@@ -207,46 +157,9 @@ pub fn build_window(app: &adw::Application, state: AppState) {
     refresh_btn.set_tooltip_text(Some("Refresh Packages"));
     refresh_btn.set_cursor_from_name(Some("pointer"));
 
-    let status_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    status_box.set_valign(gtk::Align::Center);
-    status_box.set_margin_start(8);
-
-    let dnf_badge = create_status_badge("DNF");
-    let flatpak_badge = create_status_badge("Flatpak");
-    let cargo_badge = create_status_badge("Cargo");
-
-    status_box.append(&dnf_badge);
-    status_box.append(&flatpak_badge);
-    status_box.append(&cargo_badge);
-
-    let update_badges = {
-        let dnf_b = dnf_badge.clone();
-        let fp_b = flatpak_badge.clone();
-        let cr_b = cargo_badge.clone();
-        let state = state.clone();
-        move || {
-            let statuses = state.get_statuses();
-            if let Some(s) = statuses.get(&crate::models::PackageManager::Dnf) {
-                update_status_badge(&dnf_b, "DNF", s);
-            }
-            if let Some(s) = statuses.get(&crate::models::PackageManager::Flatpak) {
-                update_status_badge(&fp_b, "Flatpak", s);
-            }
-            if let Some(s) = statuses.get(&crate::models::PackageManager::Cargo) {
-                update_status_badge(&cr_b, "Cargo", s);
-            }
-        }
-    };
-
-    let update_badges_for_store = update_badges.clone();
-    state.packages.connect_items_changed(move |_, _, _, _| {
-        update_badges_for_store();
-    });
-
     let state_for_refresh = state.clone();
     let toast_overlay_refresh = toast_overlay.clone();
     let active_toast_refresh = active_toast.clone();
-    let update_badges_refresh = update_badges.clone();
     refresh_btn.connect_clicked(glib::clone!(
         #[weak]
         refresh_btn,
@@ -257,13 +170,11 @@ pub fn build_window(app: &adw::Application, state: AppState) {
             }
             let overlay = toast_overlay_refresh.clone();
             let active_t = active_toast_refresh.clone();
-            let update_b = update_badges_refresh.clone();
             refresh_btn.set_sensitive(false);
             let btn = refresh_btn.clone();
             glib::spawn_future_local(async move {
                 let summary_opt = state.fetch_all().await;
                 btn.set_sensitive(true);
-                update_b();
                 if let Some(summary) = summary_opt {
                     let toast_msg = if summary.is_all_successful() {
                         format!(
@@ -279,7 +190,6 @@ pub fn build_window(app: &adw::Application, state: AppState) {
         }
     ));
     header_bar.pack_start(&refresh_btn);
-    header_bar.pack_start(&status_box);
 
     let view_stack = adw::ViewStack::new();
     let view_switcher = adw::ViewSwitcher::builder()
@@ -292,7 +202,7 @@ pub fn build_window(app: &adw::Application, state: AppState) {
     let search_entry = gtk::SearchEntry::builder()
         .placeholder_text("Search packages...")
         .build();
-    search_entry.set_width_request(300);
+    search_entry.set_width_request(120);
 
     header_bar.pack_end(&search_entry);
 
@@ -323,6 +233,18 @@ pub fn build_window(app: &adw::Application, state: AppState) {
         .default_height(800)
         .content(&toast_overlay)
         .build();
+
+    // Narrow layout: switch to an icon-only view switcher so the window
+    // shrinks to ~360px.
+    let narrow_condition =
+        adw::BreakpointCondition::parse("max-width: 650px").expect("valid breakpoint condition");
+    let narrow_breakpoint = adw::Breakpoint::new(narrow_condition);
+    narrow_breakpoint.add_setter(
+        &view_switcher,
+        "policy",
+        Some(&adw::ViewSwitcherPolicy::Narrow.to_value()),
+    );
+    window.add_breakpoint(narrow_breakpoint);
 
     search_entry.connect_search_changed(glib::clone!(
         #[weak]
@@ -363,10 +285,8 @@ pub fn build_window(app: &adw::Application, state: AppState) {
 
     let search_entry_clone2 = search_entry.clone();
     let state_clone = state.clone();
-    let update_badges_initial = update_badges.clone();
     glib::spawn_future_local(async move {
         state_clone.fetch_all().await;
-        update_badges_initial();
         println!(
             "Loaded {} packages and {} repositories",
             state_clone.packages.n_items(),
@@ -907,8 +827,8 @@ fn build_packages_page(
     let grid_view = gtk::GridView::builder()
         .model(&selection_model)
         .factory(&factory)
-        .max_columns(8)
-        .min_columns(4)
+        .max_columns(12)
+        .min_columns(1)
         .vscroll_policy(gtk::ScrollablePolicy::Natural)
         .enable_rubberband(false)
         .css_classes(["packages-grid"].to_vec())
@@ -1331,6 +1251,25 @@ fn build_packages_page(
     let overlay = gtk::Overlay::builder().child(&scrolled_window).build();
     overlay.add_overlay(&revealer);
 
+    // Keep toasts clear of the floating detail island: while the island is
+    // revealed, toasts get extra bottom margin (see `.detail-visible` CSS).
+    let island_toast_overlay = toast_overlay.clone();
+    revealer.connect_reveal_child_notify(move |r| {
+        if r.reveals_child() {
+            island_toast_overlay.add_css_class("detail-visible");
+        } else {
+            island_toast_overlay.remove_css_class("detail-visible");
+        }
+    });
+
+    // Dismiss the island when leaving the page so a stale class can't lift
+    // toasts on other tabs; the notify handler above clears the class.
+    overlay.connect_unmap(glib::clone!(
+        #[weak]
+        revealer,
+        move |_| revealer.set_reveal_child(false)
+    ));
+
     overlay.upcast()
 }
 
@@ -1350,7 +1289,10 @@ fn build_repositories_page(
         let boxed = item.downcast_ref::<glib::BoxedAnyObject>().unwrap();
         let repo = boxed.borrow::<Repository>();
 
-        let expander = adw::ExpanderRow::builder().title("").build();
+        let expander = adw::ExpanderRow::builder()
+            .title("")
+            .subtitle(&repo.id)
+            .build();
         expander.set_cursor_from_name(Some("pointer"));
 
         let prefix_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);

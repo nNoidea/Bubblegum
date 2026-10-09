@@ -112,6 +112,9 @@ impl AppState {
         self.is_operating.load(Ordering::SeqCst)
     }
 
+    // Only exercised by tests since the header badges were removed.
+    // Test-only helper: production code streams via `uninstall_with_logs`.
+    #[cfg(test)]
     pub fn get_statuses(&self) -> HashMap<PackageManager, BackendStatus> {
         self.backend_statuses.lock().unwrap().clone()
     }
@@ -308,7 +311,8 @@ impl AppState {
         }
     }
 
-    #[allow(dead_code)]
+    // Test-only helper: production code streams via `uninstall_with_logs`.
+    #[cfg(test)]
     pub async fn uninstall(&self, package: &Package) -> Result<(), BackendError> {
         self.uninstall_with_logs(package, |_| {}).await
     }
