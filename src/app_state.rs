@@ -454,7 +454,6 @@ mod tests {
 
     #[test]
     fn test_app_state_fetch_all_with_partial_results() {
-        let _ = gtk4::init();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -518,7 +517,6 @@ mod tests {
 
     #[test]
     fn test_app_state_prevent_overlapping_refresh() {
-        let _ = gtk4::init();
         let state = AppState::with_backends(vec![]);
         state.is_refreshing.store(true, Ordering::SeqCst);
 
