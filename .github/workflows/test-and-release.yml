@@ -78,7 +78,7 @@ jobs:
       - name: Install cargo-tarpaulin (pinned + checksummed)
         run: |
           TARPAULIN_VERSION="0.37.2"
-          TARPAULIN_SHA256="837dc54d21da101e96e888c6fd25f3c06554b0614880ea385cdf68cd5173"
+          TARPAULIN_SHA256="837dc54d21da101e96e888c6f6680d25f3c06554b0614880ea385cdf68cd5173"
           curl -sSL "https://github.com/xd009642/tarpaulin/releases/download/${TARPAULIN_VERSION}/cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz" -o tarpaulin.tar.gz
           echo "${TARPAULIN_SHA256}  tarpaulin.tar.gz" | sha256sum -c -
           mkdir -p "$HOME/.cargo/bin"
