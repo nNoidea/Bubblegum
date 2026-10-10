@@ -124,15 +124,10 @@ jobs:
       - name: Strip binary
         run: strip target/release/bubblegum
 
-      - name: Package artifacts
+      - name: Prepare binary artifact
         run: |
           VERSION="${{ needs.test.outputs.version }}"
-          mkdir -p dist
-          cp target/release/bubblegum dist/
-          cp data/com.github.Bubblegum.desktop dist/
-          cp README.md LICENSE dist/
-          tar -czf "bubblegum-${VERSION}-x86_64-linux.tar.gz" -C dist \
-            bubblegum com.github.Bubblegum.desktop README.md LICENSE
+          cp target/release/bubblegum "bubblegum-${VERSION}-x86_64-linux"
 
       - name: Create GitHub Release
         env:
@@ -142,4 +137,4 @@ jobs:
           gh release create "v${VERSION}" \
             --title "v${VERSION}" \
             --generate-notes \
-            "bubblegum-${VERSION}-x86_64-linux.tar.gz"
+            "bubblegum-${VERSION}-x86_64-linux"
