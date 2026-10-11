@@ -109,7 +109,8 @@ mod tests {
 
     #[test]
     fn test_load_cache_malformed_json() {
-        let temp_dir = std::env::temp_dir().join(format!("bg_cache_malformed_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("bg_cache_malformed_{}", std::process::id()));
         let cache_path = temp_dir.join("cache.json");
         fs::create_dir_all(&temp_dir).unwrap();
         fs::write(&cache_path, "{ not valid json").unwrap();
@@ -139,10 +140,7 @@ mod tests {
             resolve_cache_dir(None, Some("/home/user")),
             PathBuf::from("/home/user/.cache/bubblegum")
         );
-        assert_eq!(
-            resolve_cache_dir(None, None),
-            PathBuf::from(".bubblegum")
-        );
+        assert_eq!(resolve_cache_dir(None, None), PathBuf::from(".bubblegum"));
     }
 
     #[test]

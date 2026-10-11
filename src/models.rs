@@ -156,15 +156,18 @@ mod tests {
         };
 
         let pkg_json = serde_json::to_string(&pkg).expect("serialize package");
-        let pkg_deserialized: Package = serde_json::from_str(&pkg_json).expect("deserialize package");
+        let pkg_deserialized: Package =
+            serde_json::from_str(&pkg_json).expect("deserialize package");
         assert_eq!(pkg, pkg_deserialized);
 
         let repo_json = serde_json::to_string(&repo).expect("serialize repository");
-        let repo_deserialized: Repository = serde_json::from_str(&repo_json).expect("deserialize repository");
+        let repo_deserialized: Repository =
+            serde_json::from_str(&repo_json).expect("deserialize repository");
         assert_eq!(repo, repo_deserialized);
 
         let pm_json = serde_json::to_string(&PackageManager::Flatpak).expect("serialize pm");
-        let pm_deserialized: PackageManager = serde_json::from_str(&pm_json).expect("deserialize pm");
+        let pm_deserialized: PackageManager =
+            serde_json::from_str(&pm_json).expect("deserialize pm");
         assert_eq!(PackageManager::Flatpak, pm_deserialized);
     }
 }

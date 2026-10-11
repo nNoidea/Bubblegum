@@ -240,7 +240,8 @@ impl AppState {
             .cloned()
             .map(glib::BoxedAnyObject::new)
             .collect();
-        self.packages.splice(0, self.packages.n_items(), &first_chunk);
+        self.packages
+            .splice(0, self.packages.n_items(), &first_chunk);
 
         let mut current_idx = first_batch_size;
         while current_idx < total {
@@ -259,8 +260,6 @@ impl AppState {
 
         *self.cached_snapshot.lock().unwrap() = Some(cache);
     }
-
-
 
     pub fn is_refreshing(&self) -> bool {
         self.is_refreshing.load(Ordering::SeqCst)
@@ -825,7 +824,8 @@ mod tests {
 
     #[test]
     fn test_app_state_load_from_cache_path_success() {
-        let temp_dir = std::env::temp_dir().join(format!("bg_appstate_cache_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("bg_appstate_cache_{}", std::process::id()));
         let cache_path = temp_dir.join("cache.json");
 
         let pkg = make_test_package("cached-app", false, Some("cached-icon"));
@@ -876,7 +876,8 @@ mod tests {
 
     #[test]
     fn test_app_state_load_from_cache_default() {
-        let temp_dir = std::env::temp_dir().join(format!("bg_default_cache_test_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("bg_default_cache_test_{}", std::process::id()));
         let cache_file = temp_dir.join("cache.json");
         let cache = crate::cache::AppCache {
             packages: vec![make_test_package("default-cached", false, None)],
@@ -897,7 +898,8 @@ mod tests {
 
     #[test]
     fn test_app_state_load_initial_cache_and_stream_remaining() {
-        let temp_dir = std::env::temp_dir().join(format!("bg_stream_cache_test_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("bg_stream_cache_test_{}", std::process::id()));
         let cache_file = temp_dir.join("cache.json");
 
         let mut pkgs = Vec::new();
@@ -947,7 +949,8 @@ mod tests {
 
     #[test]
     fn test_app_state_fetch_all_persists_cache_and_skips_identical() {
-        let temp_dir = std::env::temp_dir().join(format!("bg_fetch_cache_test_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("bg_fetch_cache_test_{}", std::process::id()));
         let cache_file = temp_dir.join("cache.json");
 
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -992,7 +995,8 @@ mod tests {
 
     #[test]
     fn test_app_state_fetch_all_does_not_persist_cache_on_failure() {
-        let temp_dir = std::env::temp_dir().join(format!("bg_fetch_fail_test_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("bg_fetch_fail_test_{}", std::process::id()));
         let cache_file = temp_dir.join("cache.json");
 
         let rt = tokio::runtime::Builder::new_current_thread()
