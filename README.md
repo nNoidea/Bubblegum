@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/icon.png" width="256" height="256" alt="niri-bar icon" />
+</div>
+
 # Bubblegum
 
 A unified package manager GUI, manage all your packages across **DNF**, **Flatpak**, and **Cargo** from one place.

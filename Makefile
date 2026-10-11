@@ -2,6 +2,7 @@ PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share
 APPLICATIONS ?= $(DATADIR)/applications
+ICONDIR ?= $(DATADIR)/icons/hicolor/512x512/apps
 
 .PHONY: all build devbuild run devrun test check coverage coverage-check coverage-html install uninstall bump
 
@@ -48,15 +49,24 @@ install: build
 	install -m 755 target/release/bubblegum $(BINDIR)/bubblegum
 	install -d $(APPLICATIONS)
 	install -m 644 data/com.github.Bubblegum.desktop $(APPLICATIONS)/com.github.Bubblegum.desktop
+	install -d $(ICONDIR)
+	install -m 644 data/com.github.Bubblegum.png $(ICONDIR)/com.github.Bubblegum.png
 	@if command -v update-desktop-database > /dev/null 2>&1; then \
 		update-desktop-database $(APPLICATIONS); \
+	fi
+	@if command -v gtk-update-icon-cache > /dev/null 2>&1; then \
+		gtk-update-icon-cache -f -t $(DATADIR)/icons/hicolor 2>/dev/null || true; \
 	fi
 	@echo "Bubblegum successfully installed to $(BINDIR)/bubblegum"
 
 uninstall:
 	rm -f $(BINDIR)/bubblegum
 	rm -f $(APPLICATIONS)/com.github.Bubblegum.desktop
+	rm -f $(ICONDIR)/com.github.Bubblegum.png
 	@if command -v update-desktop-database > /dev/null 2>&1; then \
 		update-desktop-database $(APPLICATIONS); \
+	fi
+	@if command -v gtk-update-icon-cache > /dev/null 2>&1; then \
+		gtk-update-icon-cache -f -t $(DATADIR)/icons/hicolor 2>/dev/null || true; \
 	fi
 	@echo "Bubblegum uninstalled"

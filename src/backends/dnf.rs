@@ -438,10 +438,11 @@ mod tests {
             .expect("Desktop entry file should exist in data/");
         assert_eq!(
             parse_desktop_file_content(&content),
-            Some("system-software-install".to_string())
+            Some("com.github.Bubblegum".to_string())
         );
         assert!(content.contains("Exec=bubblegum"));
         assert!(content.contains("StartupWMClass=com.github.Bubblegum"));
+        assert!(std::path::Path::new("data/com.github.Bubblegum.png").exists());
     }
 
     #[test]

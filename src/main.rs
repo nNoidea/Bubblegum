@@ -1,5 +1,6 @@
 mod app_state;
 mod backends;
+mod cli;
 mod models;
 mod ui;
 
@@ -11,6 +12,10 @@ use adw::prelude::*;
 use gtk::glib;
 
 fn main() -> glib::ExitCode {
+    if let Some(exit_code) = cli::run_cli() {
+        return exit_code;
+    }
+
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
     let _enter = rt.enter();
 

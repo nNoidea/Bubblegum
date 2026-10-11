@@ -135,17 +135,23 @@ pub fn resolve_icon_name(pkg_icon: Option<&str>) -> Option<String> {
     None
 }
 
+pub fn configure_icon_theme(theme: &gtk::IconTheme) {
+    theme.add_search_path("/var/lib/flatpak/exports/share/icons");
+    if let Some(home) = std::env::var_os("HOME") {
+        let mut p = std::path::PathBuf::from(home);
+        p.push(".local/share/flatpak/exports/share/icons");
+        if let Some(s) = p.to_str() {
+            theme.add_search_path(s);
+        }
+    }
+    theme.add_search_path("data");
+    theme.add_search_path("assets");
+}
+
 pub fn build_window(app: &adw::Application, state: AppState) {
     if let Some(display) = gtk::gdk::Display::default() {
         let theme = gtk::IconTheme::for_display(&display);
-        theme.add_search_path("/var/lib/flatpak/exports/share/icons");
-        if let Some(home) = std::env::var_os("HOME") {
-            let mut p = std::path::PathBuf::from(home);
-            p.push(".local/share/flatpak/exports/share/icons");
-            if let Some(s) = p.to_str() {
-                theme.add_search_path(s);
-            }
-        }
+        configure_icon_theme(&theme);
     }
 
     let toast_overlay = adw::ToastOverlay::new();
@@ -1655,6 +1661,17 @@ mod tests {
                 .downcast_ref::<gtk::Image>()
                 .expect("second child is Image");
             assert_eq!(img.icon_name().as_deref(), Some("edit-copy-symbolic"));
+        }
+    }
+
+    #[test]
+    fn test_configure_icon_theme() {
+        if gtk::is_initialized_main_thread()
+            && let Some(display) = gtk::gdk::Display::default()
+        {
+            let theme = gtk::IconTheme::for_display(&display);
+            configure_icon_theme(&theme);
+            assert!(resolve_icon_name(Some("com.github.Bubblegum")).is_some());
         }
     }
 }
