@@ -75,6 +75,8 @@ pub struct AppState {
     pub is_refreshing: Arc<AtomicBool>,
     pub is_operating: Arc<AtomicBool>,
     backends: Vec<Arc<dyn Backend>>,
+    cached_snapshot: Arc<Mutex<Option<crate::cache::AppCache>>>,
+    custom_cache_path: Arc<Mutex<Option<std::path::PathBuf>>>,
 }
 
 impl Default for AppState {
@@ -101,8 +103,164 @@ impl AppState {
             is_refreshing: Arc::new(AtomicBool::new(false)),
             is_operating: Arc::new(AtomicBool::new(false)),
             backends,
+            cached_snapshot: Arc::new(Mutex::new(None)),
+            custom_cache_path: Arc::new(Mutex::new(None)),
         }
     }
+
+    #[cfg(test)]
+    pub fn set_custom_cache_path(&self, path: Option<std::path::PathBuf>) {
+        *self.custom_cache_path.lock().unwrap() = path;
+    }
+
+    #[cfg(test)]
+    pub fn load_from_cache(&self) -> bool {
+        let path = self.custom_cache_path.lock().unwrap().clone();
+        if let Some(ref p) = path {
+            self.load_from_cache_path(p)
+        } else {
+            self.load_from_cache_path(&crate::cache::default_cache_path())
+        }
+    }
+
+    #[cfg(test)]
+    pub fn load_from_cache_path(&self, path: &std::path::Path) -> bool {
+        if let Some(cache) = crate::cache::load_cache_from_path(path) {
+            let glib_pkgs: Vec<glib::BoxedAnyObject> = cache
+                .packages
+                .iter()
+                .cloned()
+                .map(glib::BoxedAnyObject::new)
+                .collect();
+            self.packages.splice(0, self.packages.n_items(), &glib_pkgs);
+
+            let glib_repos: Vec<glib::BoxedAnyObject> = cache
+                .repositories
+                .iter()
+                .cloned()
+                .map(glib::BoxedAnyObject::new)
+                .collect();
+            self.repositories
+                .splice(0, self.repositories.n_items(), &glib_repos);
+
+            let mut counts: HashMap<PackageManager, (usize, usize)> = HashMap::new();
+            for pkg in &cache.packages {
+                counts.entry(pkg.manager.clone()).or_insert((0, 0)).0 += 1;
+            }
+            for repo in &cache.repositories {
+                counts.entry(repo.manager.clone()).or_insert((0, 0)).1 += 1;
+            }
+
+            {
+                let mut statuses = self.backend_statuses.lock().unwrap();
+                for b in &self.backends {
+                    let mgr = b.manager();
+                    let (p_cnt, r_cnt) = counts.get(&mgr).copied().unwrap_or((0, 0));
+                    statuses.insert(
+                        mgr,
+                        BackendStatus::Loaded {
+                            package_count: p_cnt,
+                            repo_count: r_cnt,
+                        },
+                    );
+                }
+            }
+
+            *self.cached_snapshot.lock().unwrap() = Some(cache);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub async fn stream_cache_realtime(&self) {
+        #[cfg(test)]
+        let custom_path = self.custom_cache_path.lock().unwrap().clone();
+        #[cfg(not(test))]
+        let custom_path: Option<std::path::PathBuf> = None;
+
+        let cache = task::spawn_blocking(move || {
+            if let Some(ref path) = custom_path {
+                crate::cache::load_cache_from_path(path)
+            } else {
+                crate::cache::load_cache()
+            }
+        })
+        .await
+        .ok()
+        .flatten();
+
+        if let Some(c) = cache {
+            self.stream_cache_data(c).await;
+        }
+    }
+
+    pub async fn stream_cache_data(&self, cache: crate::cache::AppCache) {
+        let glib_repos: Vec<glib::BoxedAnyObject> = cache
+            .repositories
+            .iter()
+            .cloned()
+            .map(glib::BoxedAnyObject::new)
+            .collect();
+        self.repositories
+            .splice(0, self.repositories.n_items(), &glib_repos);
+
+        let mut counts: HashMap<PackageManager, (usize, usize)> = HashMap::new();
+        for pkg in &cache.packages {
+            counts.entry(pkg.manager.clone()).or_insert((0, 0)).0 += 1;
+        }
+        for repo in &cache.repositories {
+            counts.entry(repo.manager.clone()).or_insert((0, 0)).1 += 1;
+        }
+
+        {
+            let mut statuses = self.backend_statuses.lock().unwrap();
+            for b in &self.backends {
+                let mgr = b.manager();
+                let (p_cnt, r_cnt) = counts.get(&mgr).copied().unwrap_or((0, 0));
+                statuses.insert(
+                    mgr,
+                    BackendStatus::Loaded {
+                        package_count: p_cnt,
+                        repo_count: r_cnt,
+                    },
+                );
+            }
+        }
+
+        let total = cache.packages.len();
+        if total == 0 {
+            *self.cached_snapshot.lock().unwrap() = Some(cache);
+            return;
+        }
+
+        let first_batch_size = 25.min(total);
+        let first_chunk: Vec<glib::BoxedAnyObject> = cache.packages[..first_batch_size]
+            .iter()
+            .cloned()
+            .map(glib::BoxedAnyObject::new)
+            .collect();
+        self.packages.splice(0, self.packages.n_items(), &first_chunk);
+
+        let mut current_idx = first_batch_size;
+        while current_idx < total {
+            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+
+            let next_idx = (current_idx + 50).min(total);
+            let chunk: Vec<glib::BoxedAnyObject> = cache.packages[current_idx..next_idx]
+                .iter()
+                .cloned()
+                .map(glib::BoxedAnyObject::new)
+                .collect();
+            let current_len = self.packages.n_items();
+            self.packages.splice(current_len, 0, &chunk);
+            current_idx = next_idx;
+        }
+
+        *self.cached_snapshot.lock().unwrap() = Some(cache);
+    }
+
+
 
     pub fn is_refreshing(&self) -> bool {
         self.is_refreshing.load(Ordering::SeqCst)
@@ -220,24 +378,60 @@ impl AppState {
             *statuses = new_statuses.clone();
         }
 
-        let glib_pkgs: Vec<glib::BoxedAnyObject> = all_pkgs
-            .into_iter()
-            .map(glib::BoxedAnyObject::new)
-            .collect();
-        self.packages.splice(0, self.packages.n_items(), &glib_pkgs);
+        let is_identical = {
+            let snap = self.cached_snapshot.lock().unwrap();
+            if let Some(ref cached) = *snap {
+                cached.packages == all_pkgs && cached.repositories == all_repos
+            } else {
+                false
+            }
+        };
 
-        let glib_repos: Vec<glib::BoxedAnyObject> = all_repos
-            .into_iter()
-            .map(glib::BoxedAnyObject::new)
-            .collect();
-        self.repositories
-            .splice(0, self.repositories.n_items(), &glib_repos);
+        if !is_identical {
+            let glib_pkgs: Vec<glib::BoxedAnyObject> = all_pkgs
+                .iter()
+                .cloned()
+                .map(glib::BoxedAnyObject::new)
+                .collect();
+            self.packages.splice(0, self.packages.n_items(), &glib_pkgs);
 
-        Some(RefreshSummary {
+            let glib_repos: Vec<glib::BoxedAnyObject> = all_repos
+                .iter()
+                .cloned()
+                .map(glib::BoxedAnyObject::new)
+                .collect();
+            self.repositories
+                .splice(0, self.repositories.n_items(), &glib_repos);
+
+            *self.cached_snapshot.lock().unwrap() = Some(crate::cache::AppCache {
+                packages: all_pkgs.clone(),
+                repositories: all_repos.clone(),
+            });
+        }
+
+        let summary = RefreshSummary {
             total_packages: total_pkgs,
             total_repositories: total_repos,
             statuses: new_statuses,
-        })
+        };
+
+        if summary.is_all_successful() {
+            let cache_to_save = crate::cache::AppCache {
+                packages: all_pkgs,
+                repositories: all_repos,
+            };
+            let custom_path = self.custom_cache_path.lock().unwrap().clone();
+            let _ = task::spawn_blocking(move || {
+                if let Some(path) = custom_path {
+                    let _ = crate::cache::save_cache_to_path(&path, &cache_to_save);
+                } else {
+                    let _ = crate::cache::save_cache(&cache_to_save);
+                }
+            })
+            .await;
+        }
+
+        Some(summary)
     }
 
     pub async fn check_uninstall_impact(
@@ -321,7 +515,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::PackageManager;
+    use crate::models::{PackageManager, Repository};
 
     struct MockBackend {
         manager: PackageManager,
@@ -366,8 +560,8 @@ mod tests {
             self.refresh_result
                 .lock()
                 .unwrap()
-                .take()
-                .expect("refresh called multiple times")
+                .clone()
+                .expect("refresh_result must be set")
         }
 
         fn check_uninstall_impact(&self, _package: &Package) -> Result<Vec<String>, BackendError> {
@@ -627,5 +821,201 @@ mod tests {
                 Vec::<String>::new()
             );
         });
+    }
+
+    #[test]
+    fn test_app_state_load_from_cache_path_success() {
+        let temp_dir = std::env::temp_dir().join(format!("bg_appstate_cache_{}", std::process::id()));
+        let cache_path = temp_dir.join("cache.json");
+
+        let pkg = make_test_package("cached-app", false, Some("cached-icon"));
+        let repo = Repository {
+            id: "cached-repo".to_string(),
+            name: "Cached Repo".to_string(),
+            manager: PackageManager::Dnf,
+            enabled: true,
+            url: Some("https://example.com/repo".to_string()),
+            file_path: None,
+            added_date: None,
+        };
+        let cache = crate::cache::AppCache {
+            packages: vec![pkg],
+            repositories: vec![repo],
+        };
+        crate::cache::save_cache_to_path(&cache_path, &cache).unwrap();
+
+        let b_dnf = Arc::new(MockBackend::new(
+            PackageManager::Dnf,
+            Ok(BackendData::default()),
+        ));
+        let state = AppState::with_backends(vec![b_dnf]);
+
+        assert!(state.load_from_cache_path(&cache_path));
+        assert_eq!(state.packages.n_items(), 1);
+        assert_eq!(state.repositories.n_items(), 1);
+
+        let statuses = state.get_statuses();
+        assert_eq!(
+            statuses.get(&PackageManager::Dnf),
+            Some(&BackendStatus::Loaded {
+                package_count: 1,
+                repo_count: 1,
+            })
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_app_state_load_from_cache_path_non_existent() {
+        let non_existent = std::path::Path::new("/non/existent/cache/bubblegum.json");
+        let state = AppState::with_backends(vec![]);
+        assert!(!state.load_from_cache_path(non_existent));
+        assert_eq!(state.packages.n_items(), 0);
+    }
+
+    #[test]
+    fn test_app_state_load_from_cache_default() {
+        let temp_dir = std::env::temp_dir().join(format!("bg_default_cache_test_{}", std::process::id()));
+        let cache_file = temp_dir.join("cache.json");
+        let cache = crate::cache::AppCache {
+            packages: vec![make_test_package("default-cached", false, None)],
+            repositories: vec![],
+        };
+        crate::cache::save_cache_to_path(&cache_file, &cache).unwrap();
+
+        let state = AppState::with_backends(vec![]);
+        state.set_custom_cache_path(Some(cache_file.clone()));
+        assert!(state.load_from_cache());
+        assert_eq!(state.packages.n_items(), 1);
+
+        state.set_custom_cache_path(None);
+        let _ = state.load_from_cache();
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_app_state_load_initial_cache_and_stream_remaining() {
+        let temp_dir = std::env::temp_dir().join(format!("bg_stream_cache_test_{}", std::process::id()));
+        let cache_file = temp_dir.join("cache.json");
+
+        let mut pkgs = Vec::new();
+        for i in 0..120 {
+            pkgs.push(make_test_package(&format!("pkg-{}", i), false, None));
+        }
+        let cache = crate::cache::AppCache {
+            packages: pkgs,
+            repositories: vec![],
+        };
+        crate::cache::save_cache_to_path(&cache_file, &cache).unwrap();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let state = AppState::with_backends(vec![]);
+            state.set_custom_cache_path(Some(cache_file.clone()));
+
+            state.stream_cache_realtime().await;
+            assert_eq!(state.packages.n_items(), 120);
+
+            // Test small cache (<= 25)
+            let small_cache = crate::cache::AppCache {
+                packages: vec![make_test_package("small-pkg", false, None)],
+                repositories: vec![],
+            };
+            let state_small = AppState::with_backends(vec![]);
+            state_small.stream_cache_data(small_cache).await;
+            assert_eq!(state_small.packages.n_items(), 1);
+
+            // Test empty cache
+            let empty_cache = crate::cache::AppCache::default();
+            let state_empty = AppState::with_backends(vec![]);
+            state_empty.stream_cache_data(empty_cache).await;
+            assert_eq!(state_empty.packages.n_items(), 0);
+
+            // Test default path branch
+            state.set_custom_cache_path(None);
+            state.stream_cache_realtime().await;
+        });
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_app_state_fetch_all_persists_cache_and_skips_identical() {
+        let temp_dir = std::env::temp_dir().join(format!("bg_fetch_cache_test_{}", std::process::id()));
+        let cache_file = temp_dir.join("cache.json");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let pkg = make_test_package("persisted-pkg", false, None);
+            let b_dnf = Arc::new(MockBackend::new(
+                PackageManager::Dnf,
+                Ok(BackendData {
+                    packages: vec![pkg],
+                    repositories: vec![],
+                }),
+            ));
+            let state = AppState::with_backends(vec![b_dnf]);
+            state.set_custom_cache_path(Some(cache_file.clone()));
+
+            // Initial fetch saves cache
+            let summary = state.fetch_all().await;
+            assert!(summary.is_some());
+            assert!(cache_file.exists());
+
+            let loaded_cache = crate::cache::load_cache_from_path(&cache_file);
+            assert!(loaded_cache.is_some());
+            assert_eq!(loaded_cache.unwrap().packages.len(), 1);
+
+            // Fetch again: data is identical, should skip re-splicing
+            let summary2 = state.fetch_all().await;
+            assert!(summary2.is_some());
+            assert_eq!(state.packages.n_items(), 1);
+
+            // Also test default cache path path-branch in fetch_all
+            state.set_custom_cache_path(None);
+            let summary3 = state.fetch_all().await;
+            assert!(summary3.is_some());
+        });
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_app_state_fetch_all_does_not_persist_cache_on_failure() {
+        let temp_dir = std::env::temp_dir().join(format!("bg_fetch_fail_test_{}", std::process::id()));
+        let cache_file = temp_dir.join("cache.json");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let b_dnf = Arc::new(MockBackend::new(
+                PackageManager::Dnf,
+                Err(BackendError::Unavailable {
+                    program: "dnf".to_string(),
+                }),
+            ));
+            let state = AppState::with_backends(vec![b_dnf]);
+            state.set_custom_cache_path(Some(cache_file.clone()));
+
+            let summary = state.fetch_all().await;
+            assert!(summary.is_some());
+            assert!(!summary.unwrap().is_all_successful());
+            assert!(!cache_file.exists());
+        });
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

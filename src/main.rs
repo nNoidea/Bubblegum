@@ -1,5 +1,6 @@
 mod app_state;
 mod backends;
+mod cache;
 mod cli;
 mod models;
 mod ui;

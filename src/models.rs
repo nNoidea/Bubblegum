@@ -1,6 +1,7 @@
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PackageManager {
     Dnf,
     Flatpak,
@@ -17,7 +18,7 @@ impl std::fmt::Display for PackageManager {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
     pub id: String,
     pub name: String,
@@ -34,7 +35,7 @@ pub struct Package {
     pub scope: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Repository {
     pub id: String,
     pub name: String,
@@ -124,5 +125,46 @@ mod tests {
 
         let cloned = repo.clone();
         assert_eq!(cloned.id, "repo-id");
+    }
+
+    #[test]
+    fn test_models_serialization_roundtrip() {
+        let pkg = Package {
+            id: "pkg1".to_string(),
+            name: "Test Package".to_string(),
+            manager: PackageManager::Dnf,
+            version: "1.2.3".to_string(),
+            source: Some("fedora".to_string()),
+            icon: Some("icon".to_string()),
+            description: Some("Description".to_string()),
+            size: Some("15 MB".to_string()),
+            install_date: Some("Feb 1, 2026".to_string()),
+            is_dependency: true,
+            arch: Some("x86_64".to_string()),
+            branch: None,
+            scope: None,
+        };
+
+        let repo = Repository {
+            id: "repo1".to_string(),
+            name: "Repo 1".to_string(),
+            manager: PackageManager::Cargo,
+            enabled: true,
+            url: Some("https://example.com".to_string()),
+            file_path: None,
+            added_date: NaiveDate::from_ymd_opt(2026, 2, 1),
+        };
+
+        let pkg_json = serde_json::to_string(&pkg).expect("serialize package");
+        let pkg_deserialized: Package = serde_json::from_str(&pkg_json).expect("deserialize package");
+        assert_eq!(pkg, pkg_deserialized);
+
+        let repo_json = serde_json::to_string(&repo).expect("serialize repository");
+        let repo_deserialized: Repository = serde_json::from_str(&repo_json).expect("deserialize repository");
+        assert_eq!(repo, repo_deserialized);
+
+        let pm_json = serde_json::to_string(&PackageManager::Flatpak).expect("serialize pm");
+        let pm_deserialized: PackageManager = serde_json::from_str(&pm_json).expect("deserialize pm");
+        assert_eq!(PackageManager::Flatpak, pm_deserialized);
     }
 }

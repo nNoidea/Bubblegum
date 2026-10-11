@@ -29,6 +29,7 @@ thread_local! {
     static INJECTED_COLORS: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
     static GLOBAL_PROVIDER: gtk::CssProvider = gtk::CssProvider::new();
     static GLOBAL_CSS: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    static PROVIDER_ATTACHED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 fn generate_color(seed: &str) -> (String, String) {
@@ -101,11 +102,18 @@ fn inject_color_css_if_needed(source_text: &str) -> String {
 
                 GLOBAL_PROVIDER.with(|provider| {
                     provider.load_from_data(&css_str);
-                    gtk::style_context_add_provider_for_display(
-                        &gtk::gdk::Display::default().unwrap(),
-                        provider,
-                        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-                    );
+                    PROVIDER_ATTACHED.with(|attached| {
+                        if !attached.get()
+                            && let Some(display) = gtk::gdk::Display::default()
+                        {
+                            gtk::style_context_add_provider_for_display(
+                                &display,
+                                provider,
+                                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+                            );
+                            attached.set(true);
+                        }
+                    });
                 });
             });
 
@@ -292,6 +300,8 @@ pub fn build_window(app: &adw::Application, state: AppState) {
     let search_entry_clone2 = search_entry.clone();
     let state_clone = state.clone();
     glib::spawn_future_local(async move {
+        state_clone.stream_cache_realtime().await;
+
         state_clone.fetch_all().await;
         println!(
             "Loaded {} packages and {} repositories",
