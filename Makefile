@@ -4,7 +4,7 @@ DATADIR ?= $(PREFIX)/share
 APPLICATIONS ?= $(DATADIR)/applications
 ICONDIR ?= $(DATADIR)/icons/hicolor/512x512/apps
 
-.PHONY: all build devbuild run devrun test check coverage coverage-check coverage-html install uninstall bump
+.PHONY: all build devbuild run devrun test check fmt fmt-check coverage coverage-check coverage-html install uninstall bump
 
 all: build
 
@@ -28,10 +28,18 @@ run:
 devrun:
 	cargo run
 
+fmt:
+	cargo fmt
+
+fmt-check:
+	cargo fmt --check
+
 test:
+	cargo fmt --check
 	cargo test
 
 check:
+	cargo fmt --check
 	cargo clippy -- -D warnings
 
 coverage:
